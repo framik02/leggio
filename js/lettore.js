@@ -2,6 +2,7 @@
 import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, aggiungiTempo, nuovoId } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, minuti, pressioneLunga } from './ui.js';
 import { LettoreAudio, nomeVoce } from './audio.js';
+import { creaSelezione } from './selezione.js';
 import { Lettore, frasiDalCapitolo, voci, trovaVoce, prova, etichettaQualita, applicaDizionario, disponibile } from './voce.js';
 
 const TEMI = {
@@ -17,6 +18,8 @@ const CARATTERI = {
   atkinson: { nome: 'Atkinson', css: "'Atkinson Hyperlegible', system-ui, sans-serif" },
 };
 const PAROLE_MINUTO = 230;
+// Pagine fisse quando il libro non porta quelle a stampa: circa una pagina stampata.
+const PAROLE_PAGINA = 275;
 
 export async function apriLettore(radice, id, esci) {
   const libro = await db.get('libri', id);
@@ -76,7 +79,8 @@ export async function apriLettore(radice, id, esci) {
     h('div', { class: 'p-dx' }, chipTimer, btnVoce));
   const torna = h('button', { class: 'l-torna', onclick: () => segui(true) }, 'Torna alla voce');
 
-  const el = h('div', { class: 'lettore' }, barraSu, scorri, torna, h('footer', { class: 'l-barra-giu' }, info, player));
+  const selbar = h('div', { class: 'l-selbar' });
+  const el = h('div', { class: 'lettore' }, barraSu, scorri, torna, h('footer', { class: 'l-barra-giu' }, info, player), selbar);
   radice.replaceChildren(el);
   document.body.classList.add('in-lettura');
 
@@ -138,6 +142,57 @@ export async function apriLettore(radice, id, esci) {
     el.classList.toggle('con-audio', !!reg);
   }
 
+  // Numero di pagina: quello a stampa se il libro lo porta, altrimenti pagine fisse.
+  function infoPagina(frase) {
+    if (libro.pagine === 'stampa') {
+      const sp = spanDi(frase);
+      let num = null;
+      if (sp) for (const m of pagina.querySelectorAll('[data-pag]')) {
+        if (m.compareDocumentPosition(sp) & Node.DOCUMENT_POSITION_FOLLOWING) num = m.dataset.pag; else break;
+      }
+      if (num === null) for (let k = cap - 1; k >= 0; k--) if (libro.capitoli[k].pag) { num = libro.capitoli[k].pag[1]; break; }
+      if (num === null) return '';
+      const ultimo = [...libro.capitoli].reverse().find(c => c.pag)?.pag[1];
+      return /^\d+$/.test(num) && /^\d+$/.test(ultimo || '') ? `pag. ${num} di ${ultimo}` : `pag. ${num}`;
+    }
+    const prima = libro.capitoli.slice(0, cap).reduce((s, c) => s + c.parole, 0);
+    const qui = frasi.filter(f => f.id < frase).reduce((s, f) => s + f.parole, 0);
+    const tot = Math.max(1, Math.ceil(libro.paroleTotali / PAROLE_PAGINA));
+    return `pag. ${Math.min(tot, Math.floor((prima + qui) / PAROLE_PAGINA) + 1)} di ${tot}`;
+  }
+  function paginaInizio(i) {
+    if (libro.pagine === 'stampa') return libro.capitoli[i].pag?.[0] || '';
+    return String(Math.floor(libro.capitoli.slice(0, i).reduce((s, c) => s + c.parole, 0) / PAROLE_PAGINA) + 1);
+  }
+  async function vaiAPagina(num) {
+    num = String(num).trim();
+    if (!num) return false;
+    const dopo = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
+    if (libro.pagine === 'stampa') {
+      for (let k = 0; k < libro.capitoli.length; k++) {
+        const c = await db.get('capitoli', [id, k]);
+        if (!c.html.includes(`data-pag="${num}"`)) continue;
+        await caricaCapitolo(k);
+        dopo(() => {
+          const m = pagina.querySelector(`[data-pag="${CSS.escape(num)}"]`);
+          if (m) { const r = m.getBoundingClientRect(), rs = scorri.getBoundingClientRect(); scorri.scrollTo({ top: scorri.scrollTop + r.top - rs.top - 30 }); }
+        });
+        return true;
+      }
+      avviso(`Pagina ${num} non trovata`);
+      return false;
+    }
+    const n = parseInt(num, 10);
+    if (!n) return false;
+    let obiettivo = (n - 1) * PAROLE_PAGINA, k = 0;
+    while (k < libro.capitoli.length - 1 && obiettivo >= libro.capitoli[k].parole) { obiettivo -= libro.capitoli[k].parole; k++; }
+    await caricaCapitolo(k);
+    let somma = 0;
+    const f = frasi.find(x => (somma += x.parole) > obiettivo) || frasi[frasi.length - 1];
+    if (f) dopo(() => vaiAFrase(f.id, false));
+    return true;
+  }
+
   function spanDi(idFrase) { return pagina.querySelector(`span.s[data-s="${idFrase}"]`); }
 
   function vaiAFrase(idFrase, morbido = true) {
@@ -168,7 +223,7 @@ export async function apriLettore(radice, id, esci) {
     const restanti = frasi.filter(f => f.id >= frase).reduce((s, f) => s + f.parole, 0);
     const vel = lettore.attivo ? PAROLE_MINUTO * 0.72 * lettore.velocita : PAROLE_MINUTO;
     infoSx.textContent = `${minuti(restanti / vel * 60)} alla fine del capitolo`;
-    infoDx.textContent = `${Math.round(libro.progresso * 100)}%`;
+    infoDx.textContent = infoPagina(frase) || `${Math.round(libro.progresso * 100)}%`;
     clearTimeout(tSalva);
     tSalva = setTimeout(() => db.put('libri', libro), 600);
     aggiornaSegno();
@@ -184,13 +239,10 @@ export async function apriLettore(radice, id, esci) {
     if (Date.now() - ultimoScroll > 250) { ultimoScroll = Date.now(); if (!lettore.attivo) salvaPosizione(); }
   }, { passive: true });
 
-  pagina.addEventListener('click', e => {
-    if (e.target.closest('button')) return;
-    el.classList.toggle('nascosto');
-  });
-  pressioneLunga(pagina, e => {
-    const sp = document.elementFromPoint(e.clientX, e.clientY)?.closest('span.s');
-    if (sp) menuFrase(+sp.dataset.s);
+  const selezione = creaSelezione({
+    pagina, scorri,
+    quandoCambia: s => mostraBarra(s),
+    toccoVuoto: () => el.classList.toggle('nascosto'),
   });
 
   // Tempo di lettura: conta solo se la pagina è stata toccata da poco o se la voce va.
@@ -309,15 +361,11 @@ export async function apriLettore(radice, id, esci) {
   }
 
   // ------------------------------------------------------------ evidenziati e segnalibri
+  // Evidenziati vecchi (frase intera) e nuovi (pezzo libero) diventano intervalli.
   function disegnaEvidenziati() {
-    pagina.querySelectorAll('.ev').forEach(s => { s.classList.remove('ev', 'ev-giallo', 'ev-ciano', 'ev-lilla', 'ev-nota'); });
-    for (const e of evidenziati) {
-      if (e.cap !== cap || e.tipo === 'segno') continue;
-      for (const sp of pagina.querySelectorAll(`span.s[data-s="${e.frase}"]`)) {
-        sp.classList.add('ev', `ev-${e.colore}`);
-        if (e.nota) sp.classList.add('ev-nota');
-      }
-    }
+    const qui = evidenziati.filter(e => e.cap === cap && e.tipo !== 'segno');
+    for (const e of qui) if (!e.da) { e.da = { s: e.frase, off: 0 }; e.a = { s: e.frase, off: selezione.lunghezza(e.frase) }; }
+    selezione.evidenze(qui);
   }
 
   function segnoQui() {
@@ -344,39 +392,55 @@ export async function apriLettore(radice, id, esci) {
     return [...pagina.querySelectorAll(`span.s[data-s="${idFrase}"]`)].map(s => s.textContent).join('').trim();
   }
 
-  function menuFrase(idFrase) {
-    navigator.vibrate?.(8);
-    const testo = testoFrase(idFrase);
-    const esistente = evidenziati.find(e => e.tipo !== 'segno' && e.cap === cap && e.frase === idFrase);
-    pagina.querySelectorAll(`span.s[data-s="${idFrase}"]`).forEach(s => s.classList.add('scelta'));
-    const colori = ['giallo', 'ciano', 'lilla'];
-    const evidenzia = async (colore, nota) => {
-      const e = esistente || { id: nuovoId(), libro: id, cap, frase: idFrase, tipo: 'ev', testo, capTitolo: libro.capitoli[cap].titolo, data: Date.now() };
-      e.colore = colore || e.colore || 'giallo';
-      if (nota !== undefined) e.nota = nota;
-      await db.put('evidenziati', e);
-      if (!esistente) evidenziati.push(e);
-      disegnaEvidenziati();
-    };
-    const f = foglio(null, h('div', { class: 'menu-frase' },
-      h('blockquote', { class: 'mf-citazione' }, testo),
-      h('div', { class: 'mf-colori' },
-        colori.map(c => h('button', { class: `mf-colore c-${c} ${esistente?.colore === c ? 'attivo' : ''}`, 'aria-label': `Evidenzia ${c}`, onclick: async () => { await evidenzia(c); f.chiudi(); } })),
-        esistente ? h('button', { class: 'mf-togli', onclick: async () => { await db.del('evidenziati', esistente.id); evidenziati = evidenziati.filter(e => e !== esistente); disegnaEvidenziati(); f.chiudi(); } }, 'Togli') : null),
-      h('div', { class: 'mf-azioni' },
-        azione('cuffie', 'Ascolta da qui', () => { f.chiudi(); alternaAscolto(idFrase); }),
-        azione('matita', esistente?.nota ? 'Modifica nota' : 'Aggiungi nota', () => { f.chiudi(); nota(esistente, evidenzia); }),
-        azione('voce', 'Correggi pronuncia', () => { f.chiudi(); correggiPronuncia(testo); }),
-        azione('copia', 'Copia', async () => { try { await navigator.clipboard.writeText(`«${testo}» ${libro.titolo}${libro.autore ? ', ' + libro.autore : ''}`); avviso('Copiato'); } catch { avviso('Copia non riuscita'); } f.chiudi(); }))),
-      { allaChiusura: () => pagina.querySelectorAll('span.s.scelta').forEach(s => s.classList.remove('scelta')) });
+  function mostraBarra(sel) {
+    el.classList.toggle('con-selezione', !!sel);
+    if (!sel) return;
+    const es = sel.esistente;
+    const az = (ic, t, fn) => h('button', { class: 'sb-azione', onclick: fn }, icona(ic, 20), h('span', {}, t));
+    selbar.replaceChildren(
+      h('div', { class: 'sb-riga' },
+        ...['giallo', 'ciano', 'lilla'].map(c => h('button', { class: `mf-colore c-${c} ${es?.colore === c ? 'attivo' : ''}`, 'aria-label': `Evidenzia ${c}`, onclick: () => salvaEvidenza(c) })),
+        es ? h('button', { class: 'mf-togli', onclick: () => togliEvidenza(es) }, 'Togli') : h('span', { class: 'sb-suggerimento' }, 'Trascina le maniglie per allungare'),
+        bottoneIcona('chiudi', 'Annulla', () => selezione.pulisci(), 'sb-chiudi')),
+      h('div', { class: 'sb-azioni' },
+        az('cuffie', 'Ascolta', () => { const da = sel.da.s; selezione.pulisci(); alternaAscolto(da); }),
+        az('matita', es?.nota ? 'Nota ✓' : 'Nota', () => nota(es, testo => salvaEvidenza(null, testo))),
+        az('copia', 'Copia', async () => {
+          const t = selezione.testo();
+          try { await navigator.clipboard.writeText(`«${t}» ${libro.titolo}${libro.autore ? ', ' + libro.autore : ''}`); avviso('Copiato'); } catch { avviso('Copia non riuscita'); }
+          selezione.pulisci();
+        }),
+        az('voce', 'Pronuncia', () => correggiPronuncia(selezione.testo()))));
   }
-  function azione(ic, testo, fn) { return h('button', { class: 'mf-azione', onclick: fn }, icona(ic), h('span', {}, testo)); }
 
-  function nota(esistente, evidenzia) {
+  async function salvaEvidenza(colore, testoNota) {
+    const sel = selezione.attuale();
+    if (!sel) return;
+    const e = sel.esistente || { id: nuovoId(), libro: id, cap, tipo: 'ev', data: Date.now(), capTitolo: libro.capitoli[cap].titolo };
+    e.da = { ...sel.da }; e.a = { ...sel.a }; e.frase = sel.da.s;
+    e.testo = selezione.testo(sel);
+    e.colore = colore || e.colore || 'giallo';
+    if (testoNota !== undefined) e.nota = testoNota;
+    await db.put('evidenziati', e);
+    if (!evidenziati.includes(e)) evidenziati.push(e);
+    selezione.pulisci();
+    disegnaEvidenziati();
+  }
+
+  async function togliEvidenza(e) {
+    await db.del('evidenziati', e.id);
+    evidenziati = evidenziati.filter(x => x !== e);
+    selezione.pulisci();
+    disegnaEvidenziati();
+  }
+
+  function nota(esistente, salva) {
     const area = h('textarea', { class: 'campo', rows: 5, placeholder: 'Cosa ti ha colpito…' });
     area.value = esistente?.nota || '';
-    const f = foglio('Nota', h('div', { class: 'modulo' }, area,
-      h('button', { class: 'btn primario largo', onclick: async () => { await evidenzia(null, area.value.trim()); f.chiudi(); avviso('Nota salvata'); } }, 'Salva')));
+    const f = foglio('Nota', h('div', { class: 'modulo' },
+      h('blockquote', { class: 'mf-citazione' }, selezione.testo()),
+      area,
+      h('button', { class: 'btn primario largo', onclick: async () => { await salva(area.value.trim()); f.chiudi(); avviso('Nota salvata'); } }, 'Salva')));
     setTimeout(() => area.focus(), 300);
   }
 
@@ -419,13 +483,16 @@ export async function apriLettore(radice, id, esci) {
       schede.replaceChildren(...[['capitoli', 'Capitoli'], ['note', 'Evidenziati'], ['cerca', 'Cerca']].map(([k, v]) =>
         h('button', { class: scheda === k ? 'attivo' : '', onclick: () => { scheda = k; disegna(); } }, v)));
       if (scheda === 'capitoli') {
-        let somma = 0;
-        contenuto.replaceChildren(h('ol', { class: 'capitoli' }, libro.capitoli.map((c, i) => {
-          const inizio = somma; somma += c.frasi;
-          const pct = libro.frasiTotali ? Math.round(inizio / libro.frasiTotali * 100) : 0;
-          return h('li', {}, h('button', { class: i === cap ? 'attuale' : '', onclick: async () => { f.chiudi(); const era = lettore.attivo; lettore.pausa(); await caricaCapitolo(i); if (era) lettore.play(0); } },
-            h('span', { class: 'cap-titolo' }, c.titolo), h('span', { class: 'cap-pct' }, `${pct}%`)));
-        })));
+        const numero = h('input', { class: 'campo', type: 'text', inputmode: libro.pagine === 'stampa' ? 'text' : 'numeric', placeholder: 'Numero di pagina', enterkeyhint: 'go' });
+        const vai = async () => { if (await vaiAPagina(numero.value)) f.chiudi(); };
+        numero.addEventListener('keydown', e => { if (e.key === 'Enter') vai(); });
+        contenuto.replaceChildren(
+          h('div', { class: 'vai-pagina' }, numero, h('button', { class: 'btn', onclick: vai }, 'Vai')),
+          h('ol', { class: 'capitoli' }, libro.capitoli.map((c, i) => {
+            const p = paginaInizio(i);
+            return h('li', {}, h('button', { class: i === cap ? 'attuale' : '', onclick: async () => { f.chiudi(); const era = lettore.attivo; lettore.pausa(); await caricaCapitolo(i); if (era) lettore.play(0); } },
+              h('span', { class: 'cap-titolo' }, c.titolo), h('span', { class: 'cap-pct' }, p ? `p. ${p}` : '')));
+          })));
         setTimeout(() => contenuto.querySelector('.attuale')?.scrollIntoView({ block: 'center' }), 50);
       } else if (scheda === 'note') {
         const ord = [...evidenziati].sort((a, b) => a.cap - b.cap || a.frase - b.frase);

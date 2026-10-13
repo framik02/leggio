@@ -385,3 +385,33 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 .l-info-testo > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .copia { display: grid; gap: 10px; }
+
+/* ------------------------------------------------------------ selezione libera */
+.l-scorri { touch-action: manipulation; }
+.l-pagina { position: relative; }
+::highlight(ev-giallo) { background-color: var(--ev-giallo); }
+::highlight(ev-ciano) { background-color: var(--ev-ciano); }
+::highlight(ev-lilla) { background-color: var(--ev-lilla); }
+::highlight(ev-nota) { text-decoration: underline dotted rgba(60, 45, 30, .55); text-underline-offset: 4px; }
+::highlight(sel) { background-color: rgba(180, 83, 42, .24); }
+.maniglia { position: absolute; width: 2px; margin-left: -1px; background: var(--accento); z-index: 3; touch-action: none; pointer-events: auto; }
+.maniglia span { position: absolute; left: -8px; width: 18px; height: 18px; border-radius: 50%; background: var(--accento); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.maniglia span::after { content: ''; position: absolute; inset: -14px; }
+.maniglia.inizio span { top: -17px; }
+.maniglia.fine span { bottom: -17px; }
+.maniglia.presa span { transform: scale(1.25); }
+
+.l-selbar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; background: var(--foglio); color: var(--inchiostro); border-radius: 20px 20px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .12); padding: 14px 16px calc(var(--sotto) + 12px); display: grid; gap: 12px; transform: translateY(110%); transition: transform .25s cubic-bezier(.2, .8, .2, 1); max-width: 640px; margin: 0 auto; }
+.lettore.con-selezione .l-selbar { transform: none; }
+.lettore.con-selezione .l-barra-giu { transform: translateY(100%); }
+.sb-riga { display: flex; align-items: center; gap: 12px; }
+.sb-riga .mf-colore { width: 34px; height: 34px; flex: none; }
+.sb-suggerimento { flex: 1; font-size: 12.5px; color: var(--secondario); line-height: 1.25; }
+.sb-riga .mf-togli { flex: 1; text-align: left; }
+.sb-chiudi { margin-left: auto; }
+.sb-azioni { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.sb-azione { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px; border-radius: 12px; background: #F5F1EA; font-size: 12.5px; font-weight: 600; }
+.sb-azione svg { color: var(--accento); }
+
+.vai-pagina { display: flex; gap: 8px; position: sticky; top: 36px; z-index: 1; background: var(--foglio); padding: 6px 0; }
+.vai-pagina .btn { flex: none; }

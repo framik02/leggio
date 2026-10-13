@@ -90,8 +90,13 @@ export async function importaPdf(file, avanzamento) {
 
   const paragrafi = [];
   let att = '';
-  const chiudi = () => { if (att.trim()) paragrafi.push({ testo: att.trim() }); att = ''; };
+  let etichette = null;
+  try { etichette = await pdf.getPageLabels(); } catch { /* niente */ }
+  const nomePagina = i => (etichette && etichette[i]) ? etichette[i] : String(i + 1);
+  let paginaAtt = 0;
+  const chiudi = () => { if (att.trim()) paragrafi.push({ testo: att.trim(), pagina: nomePagina(paginaAtt) }); att = ''; };
   pagine.forEach((rr, pi) => {
+    if (!att) paginaAtt = pi;
     if (segnaPagina[pi]) { chiudi(); paragrafi.push({ testo: segnaPagina[pi], titolo: true }); }
     const corpo = rr.filter((q, k) => !((k < 2 || k >= rr.length - 2) && (ripetute.has(norm(q.t)) || /^\d{1,3}$/.test(q.t))));
     const xMin = Math.min(...corpo.map(q => q.x));
@@ -106,6 +111,7 @@ export async function importaPdf(file, avanzamento) {
         yPrec = q.y; continue;
       }
       if (salto || (rientro && /[.!?»”"]$/.test(att.trim()))) chiudi();
+      if (!att) paginaAtt = pi;
       if (att.endsWith('-') && /^\p{Ll}/u.test(q.t)) att = att.slice(0, -1) + q.t;
       else att += (att ? ' ' : '') + q.t;
       yPrec = q.y;

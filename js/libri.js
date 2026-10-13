@@ -23,6 +23,7 @@ export async function importa(file, avanzamento) {
   if (!ris.autore && daNome.autore) ris.autore = daNome.autore;
 
   const id = nuovoId();
+  const conPagine = ris.capitoli.some(c => /data-pag=/.test(c.html));
   const libro = {
     id,
     titolo: ris.titolo.trim(),
@@ -30,9 +31,10 @@ export async function importa(file, avanzamento) {
     lingua: ris.lingua,
     copertina: ris.copertina || null,
     formato: est,
-    capitoli: ris.capitoli.map(c => ({ titolo: c.titolo, frasi: c.frasi, parole: c.parole })),
+    capitoli: ris.capitoli.map(c => ({ titolo: c.titolo, frasi: c.frasi, parole: c.parole, pag: segniPagina(c.html) })),
     frasiTotali: ris.capitoli.reduce((s, c) => s + c.frasi, 0),
     paroleTotali: ris.capitoli.reduce((s, c) => s + c.parole, 0),
+    pagine: conPagine ? 'stampa' : 'fisse',
     posizione: { cap: 0, frase: 0 },
     progresso: 0,
     stato: 'da-leggere',
@@ -186,4 +188,10 @@ export function leggiNomeFile(nome) {
   const parti = t.split(/\s+-\s+/);
   if (parti.length >= 2) return { autore: pulito(parti[0]), titolo: pulito(parti.slice(1).join(' - ')) };
   return { autore: '', titolo: pulito(t) };
+}
+
+// Primo e ultimo numero di pagina a stampa dentro un capitolo.
+function segniPagina(html) {
+  const m = [...html.matchAll(/data-pag="([^"]+)"/g)].map(x => x[1]);
+  return m.length ? [m[0], m[m.length - 1]] : null;
 }

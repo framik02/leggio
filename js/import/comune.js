@@ -23,6 +23,13 @@ export function pulisci(radice, risolviImg) {
       if (c.nodeType !== 1) continue;
       const tag = c.localName ? c.localName.toUpperCase() : c.nodeName.toUpperCase();
       if (VIA.has(tag)) continue;
+      // Segni di pagina dell'edizione a stampa (EPUB 3 e ARIA): diventano data-pag.
+      const tipoEpub = c.getAttribute('epub:type') || c.getAttributeNS?.('http://www.idpf.org/2007/ops', 'type') || '';
+      if (/pagebreak/.test(tipoEpub) || c.getAttribute('role') === 'doc-pagebreak') {
+        const num = (c.getAttribute('title') || c.getAttribute('aria-label') || c.textContent || c.getAttribute('id') || '').replace(/^\D*/, '').trim();
+        if (num) { const seg = doc.createElement('span'); seg.setAttribute('data-pag', num); dest.appendChild(seg); }
+        continue;
+      }
       if (tag === 'IMG' || tag === 'IMAGE') {
         const src = c.getAttribute('src') || c.getAttribute('xlink:href') || c.getAttribute('href');
         const chiave = src && risolviImg ? risolviImg(src) : null;
@@ -206,7 +213,7 @@ export function capitoliDaParagrafi(paragrafi, lingua, opz = {}) {
       continue;
     }
     if (!att) { att = { titolo: '', corpo: [] }; gruppi.push(att); }
-    att.corpo.push(p.testo);
+    att.corpo.push(p);
   }
   // Senza capitoli riconoscibili: blocchi di circa 4.000 parole.
   let finali = gruppi;
@@ -216,7 +223,7 @@ export function capitoliDaParagrafi(paragrafi, lingua, opz = {}) {
     for (const t of gruppi[0]?.corpo || []) {
       if (!blocco || conta > (opz.paroleBlocco || 4000)) { blocco = { titolo: '', corpo: [] }; finali.push(blocco); conta = 0; }
       blocco.corpo.push(t);
-      conta += t.split(/\s+/).length;
+      conta += t.testo.split(/\s+/).length;
     }
   }
   // Nessun capitolo oltre le 5.000 parole: un blocco enorme rallenta il telefono.
@@ -226,7 +233,7 @@ export function capitoliDaParagrafi(paragrafi, lingua, opz = {}) {
     let parte = { titolo: g.titolo, corpo: [] }, conta = 0, k = 1;
     spezzati.push(parte);
     for (const t of g.corpo) {
-      const n = t.split(/\s+/).length;
+      const n = t.testo.split(/\s+/).length;
       if (conta + n > MAX && parte.corpo.length) {
         k++;
         parte = { titolo: g.titolo ? `${g.titolo} (${k})` : '', corpo: [] };
@@ -237,10 +244,17 @@ export function capitoliDaParagrafi(paragrafi, lingua, opz = {}) {
   }
   finali = spezzati;
   const doc = document.implementation.createHTMLDocument('');
+  let ultimaPagina;
   return finali.filter(g => g.corpo.length || g.titolo).map((g, i) => {
     const div = doc.createElement('div');
     if (g.titolo) { const h = doc.createElement('h2'); h.textContent = g.titolo; div.appendChild(h); }
-    for (const t of g.corpo) { const pp = doc.createElement('p'); pp.textContent = t; div.appendChild(pp); }
+    for (const t of g.corpo) {
+      const pp = doc.createElement('p');
+      pp.textContent = t.testo;
+      // Pagina del libro stampato dove comincia il paragrafo, se si conosce.
+      if (t.pagina !== undefined && t.pagina !== ultimaPagina) { pp.setAttribute('data-pag', t.pagina); ultimaPagina = t.pagina; }
+      div.appendChild(pp);
+    }
     const titolo = g.titolo || (finali.length > 1 ? `Parte ${i + 1}` : 'Testo');
     return capitolo(div, titolo, i, lingua);
   });
