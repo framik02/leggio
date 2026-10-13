@@ -61,8 +61,29 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
     return null;
   }
 
-  function parolaIn(x, y) {
+  // Su WebKit (iPhone) il cursore cade spesso nello spazio fra due frasi, fuori
+  // dagli span: allora si cerca la lettera sotto il dito dentro la frase toccata.
+  function puntoTesto(x, y) {
     const c = cursore(x, y);
+    if (c && c[0].nodeType === 3 && c[0].parentElement?.closest('span.s') && pagina.contains(c[0])) return c;
+    const sp = document.elementFromPoint(x, y)?.closest?.('span.s');
+    const t = sp?.firstChild;
+    if (!t || t.nodeType !== 3) return null;
+    const r = document.createRange();
+    let migliore = 0, distanza = Infinity;
+    for (let i = 0; i < t.length; i++) {
+      r.setStart(t, i); r.setEnd(t, i + 1);
+      for (const q of r.getClientRects()) {
+        if (y < q.top - 2 || y > q.bottom + 2) continue;
+        const d = x < q.left ? q.left - x : x > q.right ? x - q.right : 0;
+        if (d < distanza) { distanza = d; migliore = x > (q.left + q.right) / 2 ? i + 1 : i; }
+      }
+    }
+    return [t, migliore];
+  }
+
+  function parolaIn(x, y) {
+    const c = puntoTesto(x, y);
     if (!c || c[0].nodeType !== 3) return null;
     const testo = c[0].nodeValue;
     let i = c[1], j = c[1];
@@ -135,28 +156,31 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
     giu = null;
     if (!fermo) return;
     const x = e.clientX, y = e.clientY;
+    // Pressione lunga: la parola. Doppio tocco: la frase. Tocco: i comandi.
     if (lungo) { clearTimeout(attesa); const p = parolaIn(x, y); if (p) { navigator.vibrate?.(8); imposta(p); } return; }
-    const doppio = ultimoTocco && Date.now() - ultimoTocco.t < 300 && Math.hypot(x - ultimoTocco.x, y - ultimoTocco.y) < 30;
+    const doppio = ultimoTocco && Date.now() - ultimoTocco.t < 320 && Math.hypot(x - ultimoTocco.x, y - ultimoTocco.y) < 30;
     ultimoTocco = { x, y, t: Date.now() };
-    if (doppio) {
-      clearTimeout(attesa);
-      ultimoTocco = null;
-      const p = parolaIn(x, y);
-      if (p) { navigator.vibrate?.(8); imposta(p); }
-      return;
-    }
     clearTimeout(attesa);
-    attesa = setTimeout(() => tocco(x, y), 280);
+    if (doppio) { ultimoTocco = null; doppioTocco(x, y); return; }
+    attesa = setTimeout(() => { if (sel) imposta(null); else toccoVuoto(); }, 300);
   });
   pagina.addEventListener('contextmenu', e => e.preventDefault());
 
-  function tocco(x, y) {
-    const el = document.elementFromPoint(x, y);
-    const sp = el?.closest?.('span.s');
-    const c = sp ? cursore(x, y) : null;
-    const pos = c ? posDaNodo(c[0], c[1]) : (sp ? { s: +sp.dataset.s, off: 0 } : null);
-    if (!pos) { if (sel) imposta(null); else toccoVuoto(); return; }
-    if (dentroSel(pos)) { imposta(null); return; }
+  // Le maniglie scattano a parole intere: niente parole tagliate a metà.
+  function aggancia(pos, lato) {
+    const t = [...spans(pos.s)].map(x => x.textContent).join('');
+    const lettera = ch => /[\p{L}\p{N}'’-]/u.test(ch || '');
+    let i = pos.off;
+    if (lato === 'da') { while (i > 0 && lettera(t[i - 1])) i--; while (i < t.length && /\s/.test(t[i])) i++; }
+    else { while (i < t.length && lettera(t[i])) i++; }
+    return { s: pos.s, off: i };
+  }
+
+  function doppioTocco(x, y) {
+    const c = puntoTesto(x, y);
+    const pos = c && posDaNodo(c[0], c[1]);
+    if (!pos) return;
+    navigator.vibrate?.(8);
     const ev = evidenzaIn(pos);
     if (ev) { imposta({ da: { ...ev.da }, a: { ...ev.a }, esistente: ev }); return; }
     imposta(frase(pos.s));
@@ -174,9 +198,10 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
     });
     m.addEventListener('pointermove', e => {
       if (!m.hasPointerCapture(e.pointerId) || !sel) return;
-      const c = cursore(e.clientX, e.clientY - dy);
-      const pos = c && posDaNodo(c[0], c[1]);
-      if (!pos) return;
+      const c = puntoTesto(e.clientX, e.clientY - dy);
+      const grezza = c && posDaNodo(c[0], c[1]);
+      if (!grezza) return;
+      const pos = aggancia(grezza, lato);
       sel = { ...sel, [lato]: pos, esistente: sel.esistente };
       if (confronta(sel.da, sel.a) > 0) return;
       disegna();

@@ -419,7 +419,7 @@ export async function apriLettore(radice, id, esci) {
     selbar.replaceChildren(
       h('div', { class: 'sb-riga' },
         ...['giallo', 'ciano', 'lilla'].map(c => h('button', { class: `mf-colore c-${c} ${es?.colore === c ? 'attivo' : ''}`, 'aria-label': `Evidenzia ${c}`, onclick: () => salvaEvidenza(c) })),
-        es ? h('button', { class: 'mf-togli', onclick: () => togliEvidenza(es) }, 'Togli') : h('span', { class: 'sb-suggerimento' }, 'Trascina le maniglie per allungare'),
+        es ? h('button', { class: 'mf-togli', onclick: () => togliEvidenza(es) }, 'Togli') : h('span', { class: 'sb-suggerimento' }, 'Trascina le maniglie per allungare o accorciare'),
         bottoneIcona('chiudi', 'Annulla', () => selezione.pulisci(), 'sb-chiudi')),
       h('div', { class: 'sb-azioni' },
         az('cuffie', 'Ascolta', () => { const da = sel.da.s; selezione.pulisci(); alternaAscolto(da); }),

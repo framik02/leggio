@@ -4,7 +4,7 @@
 
 let _voci = [];
 function caricaVoci() {
-  _voci = speechSynthesis.getVoices();
+  _voci = 'speechSynthesis' in window ? speechSynthesis.getVoices() : [];
   return _voci;
 }
 if ('speechSynthesis' in window) {
