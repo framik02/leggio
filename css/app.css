@@ -425,3 +425,14 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 @keyframes scorre { 0% { transform: translateX(-100%); } 100% { transform: translateX(340%); } }
 .al-lavoro p { color: var(--secondario); }
 .l-voce { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accento); cursor: pointer; white-space: nowrap; }
+
+/* registratore */
+.reg-testata { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: -6px; }
+.reg-altro { height: 32px; padding: 0 12px; font-size: 13px; }
+.reg-obiettivo { height: 8px; border-radius: 4px; background: #EAE3D8; overflow: hidden; position: relative; }
+.reg-obiettivo::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(0, 0, 0, .12); }
+.reg-obiettivo div { height: 100%; width: 0; background: var(--accento); border-radius: 4px; transition: width .3s; }
+.reg-obiettivo.pieno div { background: #3E7A55; }
+.reg-tasto:disabled { opacity: .35; }
+.nota-testo { font-size: .82em; line-height: 1.45; opacity: .75; border-top: 1px solid color-mix(in srgb, var(--l-testo, #000) 12%, transparent); padding-top: .4em; margin-top: .6em; }
+.l-pagina sup { font-size: .65em; line-height: 0; opacity: .7; }

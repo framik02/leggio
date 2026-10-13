@@ -17,12 +17,14 @@ function righe(items) {
     const y = it.transform[5], x = it.transform[4], h = Math.abs(it.transform[3]) || it.height || 10;
     let riga = r.find(q => Math.abs(q.y - y) < h * 0.5);
     if (!riga) { riga = { y, x, h, pezzi: [] }; r.push(riga); }
-    riga.pezzi.push({ x, s: it.str, w: it.width });
+    riga.pezzi.push({ x, y, h, s: it.str, w: it.width });
     riga.x = Math.min(riga.x, x);
     riga.h = Math.max(riga.h, h);
   }
   r.sort((a, b) => b.y - a.y);
   for (const riga of r) {
+    // Numeri di nota in apice: piccoli, più in alto della riga, solo cifre.
+    riga.pezzi = riga.pezzi.filter(p => !(/^\s*\d{1,3}\s*$/.test(p.s) && p.h < riga.h * 0.8 && p.y > riga.y + riga.h * 0.15));
     riga.pezzi.sort((a, b) => a.x - b.x);
     let t = '', fine = null;
     for (const p of riga.pezzi) {
@@ -94,7 +96,8 @@ export async function importaPdf(file, avanzamento) {
   try { etichette = await pdf.getPageLabels(); } catch { /* niente */ }
   const nomePagina = i => (etichette && etichette[i]) ? etichette[i] : String(i + 1);
   let paginaAtt = 0;
-  const chiudi = () => { if (att.trim()) paragrafi.push({ testo: att.trim(), pagina: nomePagina(paginaAtt) }); att = ''; };
+  let notaAtt = false;
+  const chiudi = () => { if (att.trim()) paragrafi.push({ testo: att.trim(), pagina: nomePagina(paginaAtt), nota: notaAtt }); att = ''; };
   pagine.forEach((rr, pi) => {
     if (!att) paginaAtt = pi;
     if (segnaPagina[pi]) { chiudi(); paragrafi.push({ testo: segnaPagina[pi], titolo: true }); }
@@ -110,6 +113,9 @@ export async function importaPdf(file, avanzamento) {
         if (!segnaPagina[pi] || segnaPagina[pi] !== q.t) paragrafi.push({ testo: q.t, titolo: true });
         yPrec = q.y; continue;
       }
+      // Righe in corpo più piccolo: note a piè di pagina, in un paragrafo a parte.
+      const piccola = q.h < hCorpo * 0.85;
+      if (piccola !== notaAtt) { chiudi(); notaAtt = piccola; }
       if (salto || (rientro && /[.!?»”"]$/.test(att.trim()))) chiudi();
       if (!att) paginaAtt = pi;
       if (att.endsWith('-') && /^\p{Ll}/u.test(q.t)) att = att.slice(0, -1) + q.t;

@@ -118,7 +118,7 @@ async function preparaCapitolo(libroId, n, imp, regole, lingua) {
   const frasi = frasiDalCapitolo(div);
   const fuori = [];
   for (const f of frasi) {
-    const t = perVoce(applicaDizionario(f.testo, regole, lingua, libroId));
+    const t = perVoce(applicaDizionario(f.voce || '', regole, lingua, libroId));
     if (!/[\p{L}\p{N}]/u.test(t)) continue;
     let pausa = 60;
     if (f.titolo) pausa = 900;

@@ -41,6 +41,22 @@ export function pulisci(radice, risolviImg) {
         }
         continue;
       }
+      // Richiami e testi di nota (EPUB 3, ARIA): il richiamo diventa un apice,
+      // la nota un blocco a parte che la voce salta.
+      const ruolo = c.getAttribute('role') || '';
+      if (/noteref/.test(tipoEpub) || ruolo === 'doc-noteref' || (tag === 'A' && /#/.test(c.getAttribute('href') || '') && /^[\[(]?[\d*†‡§]{1,4}[\])]?$/.test(c.textContent.trim()))) {
+        const sup = doc.createElement('sup');
+        sup.textContent = c.textContent.trim();
+        dest.appendChild(sup);
+        continue;
+      }
+      if (/footnote|endnote|rearnote|^note$/.test(tipoEpub) || /doc-(foot|end)note/.test(ruolo)) {
+        const nota = doc.createElement('div');
+        nota.className = 'nota-testo';
+        copia(c, nota);
+        dest.appendChild(nota);
+        continue;
+      }
       if (!AMMESSI.has(tag)) { copia(c, dest); continue; }
       const el = doc.createElement(tag === 'A' ? 'span' : tag.toLowerCase());
       if (tag === 'TD' || tag === 'TH') {
@@ -253,6 +269,7 @@ export function capitoliDaParagrafi(paragrafi, lingua, opz = {}) {
       pp.textContent = t.testo;
       // Pagina del libro stampato dove comincia il paragrafo, se si conosce.
       if (t.pagina !== undefined && t.pagina !== ultimaPagina) { pp.setAttribute('data-pag', t.pagina); ultimaPagina = t.pagina; }
+      if (t.nota) pp.className = 'nota-testo';
       div.appendChild(pp);
     }
     const titolo = g.titolo || (finali.length > 1 ? `Parte ${i + 1}` : 'Testo');

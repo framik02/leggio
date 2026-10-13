@@ -85,7 +85,7 @@ export async function apriPannelloVoci(opz) {
   async function schedaTua() {
     const mie = (await db.tutti('voci')).sort((a, b) => b.creato - a.creato);
     return [
-      h('p', { class: 'nota' }, 'Registra un paio di minuti di voce: Kaggle la clona e legge il libro con quel timbro. Registra la tua voce, o quella di chi ti ha dato il permesso.'),
+      h('p', { class: 'nota' }, 'Registra da uno a tre minuti di voce, su testi diversi: Kaggle la clona e legge il libro con quel timbro. Col tasto + aggiungi registrazioni a una voce che hai già, per renderla più somigliante. Registra la tua voce, o quella di chi ti ha dato il permesso.'),
       mie.length ? h('div', { class: 'elenco-voci' }, mie.map(v => {
         const id = `clonata:${v.id}`;
         const url = URL.createObjectURL(v.campioni[0].blob);
@@ -93,6 +93,7 @@ export async function apriPannelloVoci(opz) {
           h('button', { class: 'voce-nome', onclick: async () => { libro.voceAudio = id; await db.put('libri', libro); opz.dopoCambio && opz.dopoCambio(); disegna(); } },
             h('span', { class: 'voce-testi' }, h('span', {}, v.nome), h('small', {}, `${v.campioni.length} registrazioni · ${Math.round(v.campioni.reduce((s, c) => s + c.durata, 0))} secondi`))),
           bottoneIcona('orecchio', 'Ascolta', () => ascolta(url)),
+          bottoneIcona('piu', 'Aggiungi registrazioni', () => registraVoce(libro.lingua, () => disegna(), v)),
           bottoneIcona('cestino', 'Elimina', async () => { if (await conferma('Eliminare la voce?', `«${v.nome}» sparisce da questo telefono.`, 'Elimina')) { await db.del('voci', v.id); disegna(); } }, 'piccola'));
       })) : null,
       h('button', { class: 'btn largo', onclick: () => registraVoce(libro.lingua, async v => {
@@ -149,9 +150,13 @@ async function creaAudio(libro, capAtt, voceId, dopo) {
   if (altri.length) { avviso('C\'è già un audio in preparazione per un altro libro: aspetta che finisca.'); return; }
   const motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : 'clonata';
   const giaPronti = new Set((await db.audioLibro(libro.id)).filter(a => a.voce === voceId).map(a => a.n));
+  // Capitoli di servizio che nessuno vuole ascoltare: note, bibliografia, indici.
+  const servizio = /^(note|notes|endnotes|bibliografia|bibliography|riferimenti bibliografici|indice( analitico| dei nomi)?|index|colophon|copyright|crediti|credits|frontespizio)$/i;
+  const daLeggere = libro.capitoli.map((c, i) => i).filter(i => !servizio.test((libro.capitoli[i].titolo || '').trim()));
+  const esclusi = libro.capitoli.length - daLeggere.length;
   const scelte = {
-    tutto: libro.capitoli.map((_, i) => i),
-    daqui: libro.capitoli.map((_, i) => i).filter(i => i >= capAtt),
+    tutto: daLeggere,
+    daqui: daLeggere.filter(i => i >= capAtt),
     questo: [capAtt],
   };
   let scelta = 'tutto';
@@ -161,7 +166,7 @@ async function creaAudio(libro, capAtt, voceId, dopo) {
     const parole = caps.reduce((s, i) => s + libro.capitoli[i].parole, 0);
     const { audio, attesa } = stima(parole, motore);
     info.textContent = caps.length
-      ? `${caps.length} capitoli, circa ${minuti(audio * 60)} di audio. Primo capitolo pronto in 10 o 15 minuti, tutto in circa ${minuti(attesa * 60)}.${motore !== 'kokoro' ? ' Usa la GPU gratuita di Kaggle: 30 ore a settimana.' : ''}`
+      ? `${caps.length} capitoli, circa ${minuti(audio * 60)} di audio${esclusi && scelta !== 'questo' ? ` (saltati ${esclusi} capitoli di note, bibliografia o indice)` : ''}. Primo capitolo pronto in 10 o 15 minuti, tutto in circa ${minuti(attesa * 60)}.${motore !== 'kokoro' ? ' Usa la GPU gratuita di Kaggle: 30 ore a settimana.' : ''}`
       : 'Questi capitoli hanno già l\'audio con questa voce.';
   };
   const seg = h('div', { class: 'segmenti' });
@@ -218,20 +223,36 @@ export function configuraGithub(dopo) {
 }
 
 // ---------------------------------------------------------------- registrazione
+// Testi vari apposta: racconto, dialogo, domande, esclamazioni, numeri, elenchi.
+// Il modello impara come la voce sale e scende, non solo il timbro.
 const TESTI = {
   it: [
-    'Il sole di settembre entrava di sbieco dalla finestra e disegnava sul pavimento un rettangolo dorato. Mi fermai a guardarlo, come si guarda una cosa che sta per finire.',
-    '«Ma davvero pensi che basti?» mi chiese, alzando appena la voce. Non risposi subito. Poi, piano, dissi che no, non bastava, ma che era tutto quello che avevamo.',
-    'Ventitré chilometri, tre gallerie e un ponte sul fiume: questo era il tragitto, ogni mattina, alle sette e un quarto. Lo conoscevo a memoria, eppure ogni volta trovavo qualcosa di nuovo.',
-    'Quella sera la cucina profumava di pane e di pioggia. Mia nonna rideva, raccontando di quando, da ragazza, aveva perso il treno per Napoli e aveva deciso di restare.',
+    ['Racconto', 'Il sole di settembre entrava di sbieco dalla finestra e disegnava sul pavimento un rettangolo dorato. Mi fermai a guardarlo, come si guarda una cosa che sta per finire.'],
+    ['Dialogo', '«Ma davvero pensi che basti?» mi chiese, alzando appena la voce. Non risposi subito. Poi, piano, dissi che no, non bastava, ma che era tutto quello che avevamo.'],
+    ['Numeri e date', 'Il treno delle sette e un quarto partiva dal binario tre. Ventitré chilometri, tre gallerie e un ponte sul fiume: arrivavo alle otto meno dieci, il dodici di ogni mese più stanco del solito.'],
+    ['Domande', 'Dove eravamo rimasti? Chi aveva chiuso la porta? E perché nessuno, in quella casa, voleva ammettere di aver sentito il telefono suonare tre volte, nel cuore della notte?'],
+    ['Esclamazioni', 'Che giornata! Avevamo vinto, finalmente! Mio fratello saltava sul divano, la radio gridava i risultati e perfino il cane, che di solito dormiva, abbaiava come un matto.'],
+    ['Descrizione', 'La cucina profumava di pane e di pioggia. Sul tavolo c’erano tre tazze sbeccate, un barattolo di miele e una lettera mai aperta, con il francobollo azzurro e l’indirizzo scritto a mano.'],
+    ['Elenco', 'Prima di partire controllò tutto: il passaporto, le chiavi, il caricabatterie, due maglioni, un ombrello piccolo e, nascosto nella tasca interna, il biglietto che lei gli aveva lasciato.'],
+    ['Riflessione', 'Forse non esistono scelte giuste o sbagliate, pensava. Esistono soltanto scelte fatte con attenzione oppure in fretta, e la differenza, a volte, la si scopre molti anni dopo.'],
+    ['Frase lunga', 'Quando arrivammo al paese, dopo una salita che sembrava non finire mai, tra muretti a secco, ulivi storti e qualche cane che ci seguiva per curiosità, il campanile stava suonando mezzogiorno.'],
+    ['Saggistica', 'Secondo gli studi più recenti, la memoria non funziona come un archivio, ma come una ricostruzione: ogni volta che ricordiamo un episodio, lo riscriviamo, e un poco lo cambiamo.'],
   ],
   en: [
-    'The September sun came in sideways through the window and drew a golden rectangle on the floor. I stopped to look at it, the way you look at something that is about to end.',
-    '"Do you really think that is enough?" she asked, barely raising her voice. I did not answer at once. Then, quietly, I said no, it was not enough, but it was all we had.',
-    'Fourteen miles, three tunnels and a bridge over the river: that was the journey, every morning, at a quarter past seven. I knew it by heart, and yet each time I found something new.',
-    'That evening the kitchen smelled of bread and rain. My grandmother was laughing, telling us how, as a girl, she had missed the train to the city and decided to stay.',
+    ['Story', 'The September sun came in sideways through the window and drew a golden rectangle on the floor. I stopped to look at it, the way you look at something that is about to end.'],
+    ['Dialogue', '"Do you really think that is enough?" she asked, barely raising her voice. I did not answer at once. Then, quietly, I said no, it was not enough, but it was all we had.'],
+    ['Numbers and dates', 'The seven fifteen train left from platform three. Fourteen miles, three tunnels and a bridge over the river: I arrived at ten to eight, on the twelfth of every month, more tired than usual.'],
+    ['Questions', 'Where were we? Who had closed the door? And why did nobody in that house want to admit hearing the phone ring three times, in the middle of the night?'],
+    ['Exclamations', 'What a day! We had won, at last! My brother was jumping on the sofa, the radio was shouting the results, and even the dog, who usually slept, was barking like mad.'],
+    ['Description', 'The kitchen smelled of bread and rain. On the table there were three chipped cups, a jar of honey and a letter never opened, with a blue stamp and the address written by hand.'],
+    ['List', 'Before leaving he checked everything: the passport, the keys, the charger, two sweaters, a small umbrella and, hidden in the inner pocket, the note she had left him.'],
+    ['Reflection', 'Perhaps there are no right or wrong choices, he thought. There are only choices made with care or in a hurry, and sometimes you find out the difference many years later.'],
+    ['Long sentence', 'When we reached the village, after a climb that seemed endless, between dry stone walls, crooked olive trees and a few dogs that followed us out of curiosity, the bell was ringing noon.'],
+    ['Non-fiction', 'According to recent studies, memory does not work like an archive but like a reconstruction: every time we recall an episode, we rewrite it, and we change it a little.'],
   ],
 };
+const OBIETTIVO = 120; // secondi per una buona somiglianza
+const MASSIMO_CAMPIONI = 12;
 
 function tipoRegistrazione() {
   for (const t of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']) {
@@ -240,34 +261,49 @@ function tipoRegistrazione() {
   return '';
 }
 
-export function registraVoce(lingua, dopo) {
+// esistente: una voce già salvata a cui aggiungere registrazioni.
+export function registraVoce(lingua, dopo, esistente) {
   const testi = TESTI[lingua] || TESTI.it;
   const prese = [];
-  let flusso = null, reg = null, inizio = 0, timer = null, analisi = null, raf = null, k = 0;
-  const nome = h('input', { class: 'campo', placeholder: 'Nome della voce, per esempio La mia voce' });
+  const giaFatti = esistente ? esistente.campioni.reduce((s, c) => s + c.durata, 0) : 0;
+  let flusso = null, reg = null, inizio = 0, timer = null, analisi = null, raf = null;
+  let k = esistente ? esistente.campioni.length : 0;
+  const nome = esistente ? null : h('input', { class: 'campo', placeholder: 'Nome della voce, per esempio La mia voce' });
+  const etichetta = h('div', { class: 'occhio' });
   const testo = h('blockquote', { class: 'reg-testo' });
   const tempo = h('div', { class: 'reg-tempo' }, '0:00');
   const livello = h('div', { class: 'reg-livello' }, h('div'));
   const tasto = h('button', { class: 'reg-tasto', 'aria-label': 'Registra' }, h('span'));
+  const altro = h('button', { class: 'btn reg-altro', onclick: () => { k++; mostraTesto(); } }, 'Un altro testo');
   const elenco = h('div', { class: 'reg-prese' });
-  const salva = h('button', { class: 'btn primario largo', disabled: true }, 'Salva la voce');
+  const barra = h('div', { class: 'reg-obiettivo' }, h('div'));
+  const salva = h('button', { class: 'btn primario largo', disabled: true }, esistente ? 'Aggiungi alla voce' : 'Salva la voce');
   const stato = h('p', { class: 'nota' });
 
-  const mostraTesto = () => { testo.textContent = testi[k % testi.length]; };
-  const totale = () => prese.reduce((s, p) => s + p.durata, 0);
+  const mostraTesto = () => { const [tipo, t] = testi[k % testi.length]; etichetta.textContent = tipo; testo.textContent = t; };
+  const totale = () => giaFatti + prese.reduce((s, p) => s + p.durata, 0);
   const disegnaPrese = () => {
     elenco.replaceChildren(...prese.map((p, i) => h('div', { class: 'reg-presa' },
       h('span', {}, `Registrazione ${i + 1} · ${Math.round(p.durata)} s`),
       bottoneIcona('play', 'Ascolta', () => { const a = new Audio(p.url); a.play(); }, 'piccola'),
       bottoneIcona('cestino', 'Togli', () => { prese.splice(i, 1); disegnaPrese(); }, 'piccola'))));
     const t = totale();
-    salva.disabled = t < 25 || prese.length < 2;
-    stato.textContent = t < 25 ? `Hai ${Math.round(t)} secondi: ne servono almeno 25, meglio un minuto, in due o più registrazioni.` : `Hai ${Math.round(t)} secondi di voce. ${t < 60 ? 'Un\'altra registrazione migliora la somiglianza.' : 'Bastano.'}`;
+    barra.firstChild.style.width = `${Math.min(100, t / OBIETTIVO * 100)}%`;
+    barra.classList.toggle('pieno', t >= OBIETTIVO);
+    salva.disabled = esistente ? !prese.length : (t < 25 || prese.length < 2);
+    const quanti = (esistente ? esistente.campioni.length : 0) + prese.length;
+    tasto.disabled = quanti >= MASSIMO_CAMPIONI;
+    stato.textContent = quanti >= MASSIMO_CAMPIONI ? `Hai ${MASSIMO_CAMPIONI} registrazioni, il massimo che serve.`
+      : t < 25 ? `Hai ${Math.round(t)} secondi: ne servono almeno 25, meglio due minuti, su testi diversi.`
+        : t < 60 ? `Hai ${Math.round(t)} secondi. Va già, ma con un minuto la voce somiglia di più.`
+          : t < OBIETTIVO ? `Hai ${Math.round(t)} secondi: buono. Arrivando a due minuti è ancora meglio.`
+            : `Hai ${Math.round(t)} secondi: ottimo, bastano.`;
   };
 
   async function avvia() {
     try {
-      flusso = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      // Niente controllo automatico del volume né cancellazione dell'eco: cambiano il timbro.
+      flusso = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: false } });
     } catch { avviso('Serve il permesso del microfono.'); return; }
     const tipo = tipoRegistrazione();
     reg = new MediaRecorder(flusso, tipo ? { mimeType: tipo } : undefined);
@@ -300,21 +336,23 @@ export function registraVoce(lingua, dopo) {
   tasto.addEventListener('click', () => { if (reg && reg.state === 'recording') reg.stop(); else avvia(); });
 
   salva.addEventListener('click', async () => {
-    const v = { id: nuovoId(), nome: nome.value.trim() || 'La mia voce', lingua, creato: Date.now(), campioni: [] };
+    const v = esistente || { id: nuovoId(), nome: nome.value.trim() || 'La mia voce', lingua, creato: Date.now(), campioni: [] };
     for (const p of prese) v.campioni.push({ blob: new Blob([await p.blob.arrayBuffer()], { type: p.tipo }), tipo: p.tipo, durata: p.durata });
+    v.campioni = v.campioni.slice(0, MASSIMO_CAMPIONI);
     await db.put('voci', v);
     f.chiudi();
-    avviso('Voce salvata. Sceglila e crea l\'audio del libro.');
+    avviso(esistente ? 'Registrazioni aggiunte. Il prossimo audio userà anche queste.' : 'Voce salvata. Sceglila e crea l\'audio del libro.');
     dopo && dopo(v);
   });
 
   mostraTesto();
   disegnaPrese();
-  const f = foglio('Registra una voce', h('div', { class: 'registra' },
+  const f = foglio(esistente ? `Aggiungi a «${esistente.nome}»` : 'Registra una voce', h('div', { class: 'registra' },
     nome,
-    h('p', { class: 'nota' }, 'In un posto silenzioso, col telefono a una spanna dalla bocca. Leggi con calma e con naturalezza il testo qui sotto, poi tocca di nuovo per fermare. Ogni registrazione dura al massimo 45 secondi.'),
+    h('p', { class: 'nota' }, 'In un posto silenzioso, sempre alla stessa distanza, una spanna dalla bocca. Leggi con calma, come se leggessi un audiolibro, dando la giusta intonazione a domande ed esclamazioni. Tocca per iniziare e di nuovo per fermare: al massimo 45 secondi per volta.'),
+    h('div', { class: 'reg-testata' }, etichetta, altro),
     testo,
     h('div', { class: 'reg-centro' }, tasto, h('div', {}, tempo, livello)),
-    elenco, stato, salva),
+    barra, stato, elenco, salva),
   { alto: true, allaChiusura: () => { try { if (reg && reg.state === 'recording') reg.stop(); flusso && flusso.getTracks().forEach(t => t.stop()); } catch { /* niente */ } } });
 }

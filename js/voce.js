@@ -60,13 +60,26 @@ export function applicaDizionario(testo, regole, lingua, libro) {
 // Pulizia del testo prima della sintesi.
 export function perVoce(t) {
   return t
-    .replace(/\[\d+\]|\(\d+\)/g, '')            // rimandi alle note
-    .replace(/[«»“”"]/g, '')
+    .replace(/\[\d+\]|\(\d+\)/g, '')                       // rimandi alle note fra parentesi
+    .replace(/[\u00B9\u00B2\u00B3\u2070-\u2079]+/g, '')        // numeri in apice
+    .replace(/(?<=\p{L}[.,;:!?»”)’])\d{1,3}(?=[\s,.;:)]|$)/gu, '') // numeri di nota dopo la punteggiatura
+    .replace(/[«»“”"*†‡§•·¶]/g, '')
+    .replace(/(\s*[*·•~]\s*){2,}/g, ' ')
     .replace(/\s[–—]\s/g, ', ')
     .replace(/^[–—-]\s*/, '')
-    .replace(/…/g, '...')
+    .replace(/…|\.{3,}/g, ', ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/,\s*,/g, ',')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Il testo da leggere salta i richiami alle note (numeri in apice) e il testo
+// delle note: restano nella pagina, ma la voce non li legge.
+function eNota(sp) {
+  if (sp.closest('.nota-testo, aside')) return true;
+  const sup = sp.closest('sup');
+  return !!sup && /^[\[(]?[\d*†‡§a-z]{1,4}[\])]?$/i.test(sup.textContent.trim());
 }
 
 const APERTURE = /^[\s]*[«“"—–‘]/;
@@ -83,6 +96,7 @@ export function frasiDalCapitolo(radice) {
       mappa.set(id, f);
     }
     f.testo += sp.textContent;
+    if (!eNota(sp)) f.voce = (f.voce || '') + sp.textContent;
     f.span.push(sp);
   }
   const elenco = [...mappa.values()].sort((a, b) => a.id - b.id);
@@ -164,7 +178,7 @@ export class Lettore {
     const f = this.frasi[this.indice];
     if (!f) { this.attivo = false; this.onStato(false); this.onFine(); return; }
     this.onFrase(f);
-    const testo = perVoce(applicaDizionario(f.testo, this.regole, this.lingua, this.libro));
+    const testo = perVoce(applicaDizionario(f.voce || '', this.regole, this.lingua, this.libro));
     if (!/[\p{L}\p{N}]/u.test(testo)) { this._prossima(gen, 0); return; }
     const u = new SpeechSynthesisUtterance(testo);
     if (this.voce) { u.voice = this.voce; u.lang = this.voce.lang; } else u.lang = this.lingua === 'en' ? 'en-GB' : 'it-IT';
