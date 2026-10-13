@@ -1,0 +1,16 @@
+{
+  "name": "Leggio",
+  "short_name": "Leggio",
+  "description": "Libreria personale per leggere e ascoltare i tuoi libri.",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F6F3EE",
+  "theme_color": "#F6F3EE",
+  "icons": [
+    { "src": "icons/icona-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icona-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icona-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
