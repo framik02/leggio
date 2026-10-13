@@ -48,11 +48,35 @@ async function tx(negozi, modo, fn) {
   });
 }
 
+// Alcuni browser per iPhone (DuckDuckGo e altri costruiti su WKWebView) non
+// riescono a salvare i Blob in IndexedDB. Si salvano i byte col loro tipo e il
+// Blob si ricostruisce in lettura. I Blob salvati prima restano leggibili.
+async function aBytes(v) {
+  if (v instanceof Blob) return { __blob: await v.arrayBuffer(), tipo: v.type };
+  if (Array.isArray(v)) return Promise.all(v.map(aBytes));
+  if (v && typeof v === 'object' && !(v instanceof ArrayBuffer) && !ArrayBuffer.isView(v)) {
+    const o = {};
+    for (const [k, x] of Object.entries(v)) o[k] = await aBytes(x);
+    return o;
+  }
+  return v;
+}
+function daBytes(v) {
+  if (!v || typeof v !== 'object') return v;
+  if (v.__blob instanceof ArrayBuffer) return new Blob([v.__blob], { type: v.tipo || '' });
+  if (Array.isArray(v)) return v.map(daBytes);
+  if (v instanceof Blob || v instanceof ArrayBuffer || ArrayBuffer.isView(v)) return v;
+  const o = {};
+  for (const [k, x] of Object.entries(v)) o[k] = daBytes(x);
+  return o;
+}
+
 export const db = {
   async get(negozio, chiave) {
-    return tx([negozio], 'readonly', t => rich(t.objectStore(negozio).get(chiave)));
+    return daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).get(chiave))));
   },
   async put(negozio, valore, chiave) {
+    valore = await aBytes(valore);
     return tx([negozio], 'readwrite', t => rich(chiave === undefined
       ? t.objectStore(negozio).put(valore)
       : t.objectStore(negozio).put(valore, chiave)));
@@ -61,17 +85,17 @@ export const db = {
     return tx([negozio], 'readwrite', t => rich(t.objectStore(negozio).delete(chiave)));
   },
   async tutti(negozio) {
-    return tx([negozio], 'readonly', t => rich(t.objectStore(negozio).getAll()));
+    return daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).getAll())));
   },
   async coppie(negozio) {
     return tx([negozio], 'readonly', async t => {
       const s = t.objectStore(negozio);
       const [k, v] = await Promise.all([rich(s.getAllKeys()), rich(s.getAll())]);
-      return k.map((x, i) => [x, v[i]]);
+      return k.map((x, i) => [x, daBytes(v[i])]);
     });
   },
   async perIndice(negozio, indice, valore) {
-    return tx([negozio], 'readonly', t => rich(t.objectStore(negozio).index(indice).getAll(valore)));
+    return daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).index(indice).getAll(valore))));
   },
   async capitoli(libro) {
     const r = IDBKeyRange.bound([libro, 0], [libro, Infinity]);
@@ -80,6 +104,9 @@ export const db = {
 
   // Salva un libro appena importato in una sola transazione.
   async salvaLibro(libro, capitoli, risorse, originale) {
+    libro = await aBytes(libro);
+    risorse = await aBytes(risorse);
+    originale = originale && await aBytes(originale);
     return tx(['libri', 'capitoli', 'risorse', 'originali'], 'readwrite', t => {
       t.objectStore('libri').put(libro);
       capitoli.forEach(c => t.objectStore('capitoli').put({ ...c, libro: libro.id }));
@@ -102,7 +129,7 @@ export const db = {
 
   async audioLibro(libro) {
     const r = IDBKeyRange.bound([libro, 0], [libro, Infinity]);
-    return tx(['audio'], 'readonly', t => rich(t.objectStore('audio').getAll(r)));
+    return daBytes(await tx(['audio'], 'readonly', t => rich(t.objectStore('audio').getAll(r))));
   },
   async cancellaAudio(libro) {
     return tx(['audio'], 'readwrite', t => rich(t.objectStore('audio').delete(IDBKeyRange.bound([libro, 0], [libro, Infinity]))));

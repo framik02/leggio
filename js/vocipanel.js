@@ -2,7 +2,7 @@
 import { db, impostazioni, salvaImpostazioni, nuovoId } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, conferma, minuti } from './ui.js';
 import { voci as vociTelefono, prova, etichettaQualita } from './voce.js';
-import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla } from './audio.js';
+import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla, descriviStato, recuperaLavori } from './audio.js';
 
 let _anteprima = null;
 function ascolta(url) {
@@ -17,7 +17,17 @@ export async function apriPannelloVoci(opz) {
   const { libro } = opz;
   let scheda = libro.voceAudio ? (libro.voceAudio.startsWith('clonata:') ? 'tua' : 'naturali') : 'telefono';
   const corpo = h('div', { class: 'voci' });
-  const f = foglio('Voce', corpo, { alto: true, allaChiusura: () => _anteprima && _anteprima.pause() });
+  let giro = null;
+  const ascoltaLavoro = () => disegnaAudioLibro();
+  const f = foglio('Voce', corpo, { alto: true, allaChiusura: () => { _anteprima && _anteprima.pause(); clearInterval(giro); document.removeEventListener('leggio-lavoro', ascoltaLavoro); } });
+  document.addEventListener('leggio-lavoro', ascoltaLavoro);
+  // Mentre il pannello è aperto lo stato si aggiorna da solo.
+  giro = setInterval(async () => {
+    for (const l of await lavoriAttivi(libro.id)) { try { await aggiornaLavoro(l); } catch { /* rete */ } }
+    disegnaAudioLibro();
+    opz.dopoCambio && opz.dopoCambio();
+  }, 30000);
+  configurato().then(c => c && recuperaLavori(libro.id).then(n => n && disegna()).catch(() => {}));
   const schede = h('div', { class: 'segmenti' });
   const lingue = h('div', { class: 'segmenti piccoli' });
   const contenuto = h('div', { class: 'voci-contenuto' });
@@ -109,12 +119,12 @@ export async function apriPannelloVoci(opz) {
     if (lav) {
       const st = lav.stato || {};
       const tot = lav.capitoli.length;
-      const testo = st.fase === 'errore' ? `Errore: ${st.errore || 'il lavoro si è fermato'}`
-        : st.fase === 'da riprendere' ? 'Il tempo di Kaggle è finito prima del libro: si può riprendere.'
-          : `${lav.scaricati.length} di ${tot} capitoli scaricati · ${st.fase || 'in partenza'}`;
-      parti.push(h('div', { class: `al-lavoro ${st.fase === 'errore' ? 'errore' : ''}` },
-        h('div', { class: 'al-barra' }, h('div', { style: { width: `${(lav.scaricati.length / tot * 100).toFixed(1)}%` } })),
-        h('p', {}, testo),
+      const d = descriviStato(lav);
+      const inAttesa = !['errore', 'da riprendere', 'finito'].includes(st.fase);
+      parti.push(h('div', { class: `al-lavoro ${d.errore ? 'errore' : ''}` },
+        h('div', { class: 'al-titolo' }, inAttesa ? h('span', { class: 'al-pulsa' }) : null, h('strong', {}, d.testo)),
+        h('div', { class: `al-barra ${inAttesa && !lav.scaricati.length ? 'indeterminata' : ''}` }, h('div', { style: { width: `${Math.max(3, lav.scaricati.length / tot * 100).toFixed(1)}%` } })),
+        d.dettaglio ? h('p', {}, d.dettaglio) : null,
         h('div', { class: 'riga-bottoni' },
           h('button', { class: 'btn', onclick: async () => { try { await aggiornaLavoro(lav); opz.dopoCambio && opz.dopoCambio(); } catch (e) { avviso(e.message); } disegna(); } }, 'Aggiorna'),
           (st.fase === 'errore' || st.fase === 'da riprendere') ? h('button', { class: 'btn primario', onclick: async () => { try { await riprendi(lav); avviso('Ripartito'); } catch (e) { avviso(e.message); } disegna(); } }, 'Riprendi') : null,
@@ -179,22 +189,32 @@ async function creaAudio(libro, capAtt, voceId, dopo) {
 
 // ---------------------------------------------------------------- GitHub
 export function configuraGithub(dopo) {
-  const campo = h('input', { class: 'campo', type: 'password', placeholder: 'github_pat_…', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false' });
+  // Un vero modulo con nome utente e password: l'iPhone propone di salvarlo nel
+  // Portachiavi iCloud e la volta dopo lo compila da solo.
+  const utente = h('input', { class: 'campo', type: 'text', name: 'username', autocomplete: 'username', value: 'Leggio GitHub', readonly: true });
+  const campo = h('input', { class: 'campo', type: 'password', name: 'password', autocomplete: 'current-password', placeholder: 'github_pat_… oppure ghp_…', autocapitalize: 'off', spellcheck: 'false' });
   impostazioni().then(i => { campo.value = i.githubToken || ''; });
-  const f = foglio('Audio generato', h('div', { class: 'modulo guida' },
-    h('p', {}, 'L\'audio si crea gratis su Kaggle e arriva al telefono passando dal tuo repository privato leggio-audio. Serve un codice di accesso a GitHub, da creare una volta sola.'),
+  const bottone = h('button', { class: 'btn primario largo', type: 'submit' }, 'Salva e verifica');
+  const modulo = h('form', { class: 'modulo guida', autocomplete: 'on', action: '#', method: 'post' },
+    h('p', {}, "L'audio si crea gratis su Kaggle e arriva al telefono passando dal tuo repository privato leggio-audio. Serve un codice di accesso a GitHub, da creare una volta sola."),
     h('ol', {},
       h('li', {}, 'Apri ', h('a', { href: 'https://github.com/settings/personal-access-tokens/new', target: '_blank', rel: 'noopener' }, 'github.com › nuovo codice di accesso'), '.'),
       h('li', {}, 'Nome: Leggio. Scadenza: quella che preferisci, anche un anno.'),
       h('li', {}, 'Repository access: Only select repositories › leggio-audio.'),
-      h('li', {}, 'Permissions › Repository: Contents Read and write, Actions Read and write.'),
+      h('li', {}, 'Permissions › Add permissions: Contents e Actions, tutti e due su Read and write.'),
       h('li', {}, 'Genera il codice, copialo e incollalo qui sotto.')),
-    campo,
-    h('button', { class: 'btn primario largo', onclick: async () => {
-      const { salvaConfigurazione, verificaAccesso } = await import('./audio.js');
-      await salvaConfigurazione(campo.value);
-      try { const r = await verificaAccesso(); avviso(`Collegato a ${r}`); f.chiudi(); dopo && dopo(); } catch (e) { avviso(e.message, { durata: 7000 }); }
-    } }, 'Salva e verifica')));
+    utente, campo,
+    h('p', { class: 'nota' }, "Quando l'iPhone chiede di salvare la password, accetta: il codice resta nel Portachiavi e lo ritrovi anche se i dati dell'app vengono cancellati."),
+    bottone);
+  modulo.addEventListener('submit', async e => {
+    e.preventDefault();
+    const { salvaConfigurazione, verificaAccesso } = await import('./audio.js');
+    bottone.disabled = true;
+    await salvaConfigurazione(campo.value);
+    try { const r = await verificaAccesso(); avviso(`Collegato a ${r}`); f.chiudi(); dopo && dopo(); } catch (err) { avviso(err.message, { durata: 7000 }); }
+    bottone.disabled = false;
+  });
+  const f = foglio('Audio generato', modulo);
 }
 
 // ---------------------------------------------------------------- registrazione

@@ -1,7 +1,7 @@
 // La vista di lettura: testo, indice, tipografia, evidenziati e ascolto.
 import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, aggiungiTempo, nuovoId } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, minuti, pressioneLunga } from './ui.js';
-import { LettoreAudio, nomeVoce } from './audio.js';
+import { LettoreAudio, nomeVoce, lavoriAttivi } from './audio.js';
 import { creaSelezione } from './selezione.js';
 import { Lettore, frasiDalCapitolo, voci, trovaVoce, prova, etichettaQualita, applicaDizionario, disponibile } from './voce.js';
 
@@ -63,7 +63,7 @@ export async function apriLettore(radice, id, esci) {
   const scorri = h('div', { class: 'l-scorri' }, pagina, fondoCap);
   const infoSx = h('span');
   const infoDx = h('span');
-  const etichettaVoce = h('span', { class: 'l-voce' });
+  const etichettaVoce = h('button', { class: 'l-voce', onclick: () => apriVoci() });
   const barraProg = h('div', { class: 'l-prog-riemp' });
   const info = h('div', { class: 'l-info' }, h('div', { class: 'l-prog' }, barraProg), h('div', { class: 'l-info-testo' }, infoSx, etichettaVoce, infoDx));
 
@@ -138,9 +138,27 @@ export async function apriLettore(radice, id, esci) {
     if (reg) registrato.carica(reg);
     sintesi.imposta(frasi);
     registrato.imposta(frasi);
-    etichettaVoce.textContent = reg ? nomeVoce(reg.voce, vociMie) : '';
     el.classList.toggle('con-audio', !!reg);
+    await statoAudio();
   }
+
+  // Etichetta in basso: la voce dell'audio, o a che punto è la sua creazione.
+  async function statoAudio() {
+    const reg = lettore === registrato ? await db.get('audio', [id, cap]) : null;
+    const [lav] = await lavoriAttivi(id);
+    let t = reg ? nomeVoce(reg.voce, vociMie) : '';
+    if (lav) {
+      const fase = lav.stato?.fase;
+      t = fase === 'errore' ? 'Audio: errore' : fase === 'da riprendere' ? 'Audio da riprendere'
+        : lav.scaricati.length ? `Audio ${lav.scaricati.length}/${lav.capitoli.length}` : 'Audio in preparazione';
+    }
+    etichettaVoce.textContent = t;
+  }
+  const quandoLavoro = async e => {
+    if (e.detail?.libro !== id) return;
+    if (!lettore.attivo) await scegliMotore(cap); else await statoAudio();
+  };
+  document.addEventListener('leggio-lavoro', quandoLavoro);
 
   // Numero di pagina: quello a stampa se il libro lo porta, altrimenti pagine fisse.
   function infoPagina(frase) {
@@ -352,6 +370,7 @@ export async function apriLettore(radice, id, esci) {
         if (lettore === sintesi && sintesi.attivo) sintesi.vai(sintesi.indice);
       },
       dopoCambio: async () => {
+        statoAudio();
         sintesi.lingua = libro.lingua; pagina.lang = libro.lingua;
         sintesi.voce = await trovaVoce(libro.lingua, libro.voce || imp[`voce_${libro.lingua}`]);
         vociMie = await db.tutti('voci');
@@ -565,6 +584,7 @@ export async function apriLettore(radice, id, esci) {
   // ------------------------------------------------------------ uscita
   function chiudi() {
     attivo = false;
+    document.removeEventListener('leggio-lavoro', quandoLavoro);
     sintesi.pausa();
     registrato.scarica();
     clearInterval(orologio); clearInterval(timerTick); clearTimeout(timer);

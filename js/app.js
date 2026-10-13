@@ -119,10 +119,7 @@ async function vistaLibreria() {
     h('p', {}, 'Importa EPUB, PDF, TXT, Markdown, HTML o FB2 dall\'app File. I libri restano su questo telefono.'),
     h('button', { class: 'btn primario', onclick: () => input.click() }, icona('piu', 18), 'Importa un libro')) : null;
 
-  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-  const avvisoBrowser = iOS && !installata() ? h('div', { class: 'avviso-browser' },
-    h('strong', {}, 'Stai usando Leggio dentro Safari.'),
-    h('p', {}, 'Safari e l\'icona sulla schermata Home tengono due librerie separate. Aggiungi Leggio alla Home (Condividi › Aggiungi alla schermata Home) e importa i libri da lì.')) : null;
+  const avvisoBrowser = avvisoNavigatore();
 
   const fab = h('button', { class: 'fab', 'aria-label': 'Importa libri', onclick: () => input.click() }, icona('piu', 26));
 
@@ -130,6 +127,18 @@ async function vistaLibreria() {
     libri.length ? h('div', { class: 'strumenti' }, h('div', { class: 'cerca-riga' }, cercaCampo, selOrdine), filtri) : null,
     libri.length ? griglia : null, input), libri.length ? fab : null, schede(''));
   disegnaGriglia();
+}
+
+// Su iPhone l'unico posto dove l'archivio resta è l'app aggiunta alla Home da Safari.
+function avvisoNavigatore() {
+  const ua = navigator.userAgent;
+  if (!/iPhone|iPad|iPod/.test(ua) || installata()) return null;
+  const altro = /DuckDuckGo|Ddg/i.test(ua) ? 'DuckDuckGo' : /CriOS/.test(ua) ? 'Chrome' : /FxiOS/.test(ua) ? 'Firefox' : /EdgiOS/.test(ua) ? 'Edge' : /OPiOS|OPT\//.test(ua) ? 'Opera' : '';
+  return h('div', { class: 'avviso-browser' },
+    altro ? h('strong', {}, `Stai usando ${altro}: qui libri, voci e codice di GitHub possono sparire.`) : h('strong', {}, 'Stai usando Leggio dentro Safari.'),
+    h('p', {}, altro
+      ? `${altro} cancella i dati dei siti, per esempio col tasto per pulire. Apri framik02.github.io/leggio in Safari, tocca Condividi › Aggiungi alla schermata Home e usa sempre l'icona: è l'unico posto dove l'archivio resta.`
+      : "Safari e l'icona sulla schermata Home tengono due librerie separate. Aggiungi Leggio alla Home (Condividi › Aggiungi alla schermata Home) e usa sempre l'icona."));
 }
 
 function formatoBreve(l) { return (l.formato || '').toUpperCase(); }
@@ -316,7 +325,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.3')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.3.1')),
   schede('impostazioni'));
 }
 

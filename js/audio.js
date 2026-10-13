@@ -8,6 +8,13 @@ export const REPO_PREDEFINITO = 'framik02/leggio-audio';
 // ---------------------------------------------------------------- GitHub
 async function conf() {
   const imp = await impostazioni();
+  // Seconda copia del codice in localStorage: se l'archivio principale si svuota, si recupera da lì.
+  if (!imp.githubToken) {
+    try {
+      const c = localStorage.getItem('leggio-github');
+      if (c) await salvaImpostazioni({ githubToken: c });
+    } catch { /* niente */ }
+  }
   return { token: imp.githubToken || '', repo: imp.githubRepo || REPO_PREDEFINITO };
 }
 export async function configurato() { return !!(await conf()).token; }
@@ -141,13 +148,19 @@ export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
     voce.campioni.forEach((c, i) => file.push({ percorso: `lavoro/campioni/c${i}.${estensione(c.blob.type)}`, dati: c.blob }));
   }
   avanzamento && avanzamento(0.7);
-  await creaRamo(ramo, file);
-  avanzamento && avanzamento(0.9);
-  await lancia(ramo);
+  // Il lavoro si registra sul telefono prima di partire: se qualcosa va storto
+  // dopo, l'app sa comunque che esiste e ne mostra lo stato.
   const rec = { id, ramo, libro: libro.id, voce: voceId, motore, capitoli, scaricati: [], creato: Date.now(), stato: { fase: 'in partenza' }, controllato: Date.now() };
   await db.put('lavori', rec);
-  libro.voceAudio = voceId;
-  await db.put('libri', libro);
+  try {
+    await creaRamo(ramo, file);
+    avanzamento && avanzamento(0.9);
+    await lancia(ramo);
+  } catch (e) {
+    await db.del('lavori', id);
+    throw e;
+  }
+  try { libro.voceAudio = voceId; await db.put('libri', libro); } catch (e) { console.warn('voce del libro non salvata', e); }
   return rec;
 }
 
@@ -190,6 +203,45 @@ export async function aggiornaLavoro(rec) {
   return rec;
 }
 
+// Fasi del lavoro dette in chiaro.
+export function descriviStato(rec) {
+  const st = rec.stato || {};
+  const tot = rec.capitoli.length;
+  const pronti = rec.scaricati.length;
+  const quando = st.aggiornato ? Math.round((Date.now() - st.aggiornato * 1000) / 60000) : null;
+  const ultimo = quando === null ? '' : quando < 1 ? 'Ultimo segnale adesso.' : `Ultimo segnale ${quando} min fa.`;
+  const gpu = /batch GPU session count/i.test(st.errore || '');
+  switch (st.fase) {
+    case 'errore': return { errore: true, testo: gpu ? 'Kaggle accetta al massimo due lavori con GPU insieme.' : 'Il lavoro si è fermato.', dettaglio: gpu ? "Aspetta che finisca l'altro, poi premi Riprendi." : (st.errore || '') };
+    case 'da riprendere': return { testo: 'Kaggle si è fermato prima della fine.', dettaglio: `${pronti} di ${tot} capitoli pronti. Premi Riprendi per continuare da lì.` };
+    case 'finito': return { testo: pronti >= tot ? 'Audio pronto.' : 'Finito su Kaggle, sto scaricando.', dettaglio: `${pronti} di ${tot} capitoli sul telefono.` };
+    case 'in corso': return { testo: `Lettura in corso: ${pronti} di ${tot} capitoli pronti.`, dettaglio: `Continua anche se chiudi l'app. ${ultimo}` };
+    case 'preparo la voce': return { testo: 'Kaggle è partito e sta preparando la voce.', dettaglio: `Di solito 5-10 minuti, poi arriva il primo capitolo. ${ultimo}` };
+    case 'in coda su Kaggle': return { testo: 'In coda su Kaggle, aspetta una macchina libera.', dettaglio: `Può volerci qualche minuto, a volte di più per la GPU. Continua anche se chiudi l'app. ${ultimo}` };
+    case 'carico su Kaggle': return { testo: 'Sto preparando il lavoro su Kaggle.', dettaglio: ultimo };
+    default: return { testo: 'Inviato. Kaggle lo prende in carico fra un minuto.', dettaglio: "Puoi chiudere l'app: il lavoro continua." };
+  }
+}
+
+// Lavori partiti senza che il telefono li abbia registrati: si ritrovano dai rami.
+export async function recuperaLavori(libroId) {
+  if (!(await configurato())) return 0;
+  const rami = await gh('/branches?per_page=100');
+  const noti = new Set((await db.tutti('lavori')).map(l => l.ramo));
+  const libri = new Set((await db.tutti('libri')).map(l => l.id));
+  let n = 0;
+  for (const r of rami) {
+    const m = r.name.match(/^lavoro\/([a-z0-9]+)-([a-z0-9]+)$/);
+    if (!m || noti.has(r.name) || !libri.has(m[1]) || (libroId && m[1] !== libroId)) continue;
+    try {
+      const job = JSON.parse(await gh(`/contents/lavoro/job.json?ref=${encodeURIComponent(r.name)}`, { raw: true }));
+      await db.put('lavori', { id: `${m[1]}-${m[2]}`, ramo: r.name, libro: m[1], voce: job.voce || 'clonata', motore: job.motore, capitoli: job.capitoli.map(c => c.n), scaricati: [], creato: parseInt(m[2], 36) || Date.now(), stato: {}, controllato: 0 });
+      n++;
+    } catch (e) { console.warn('ramo non recuperato', r.name, e); }
+  }
+  return n;
+}
+
 export async function riprendi(rec) {
   rec.stato = { ...rec.stato, fase: 'in partenza', errore: null };
   rec.controllato = Date.now();
@@ -209,12 +261,15 @@ export async function lavoriAttivi(libro) {
 
 let _giro = null;
 export function avviaControlli(quandoCambia) {
+  let recuperato = 0;
   const giro = async () => {
     if (document.visibilityState !== 'visible' || !(await configurato())) return;
+    if (Date.now() - recuperato > 10 * 60000) { recuperato = Date.now(); try { if (await recuperaLavori()) quandoCambia && quandoCambia(null); } catch (e) { console.warn(e); } }
     for (const l of await lavoriAttivi()) {
       const prima = l.scaricati.length + (l.stato?.fase || '');
       try { await aggiornaLavoro(l); } catch (e) { console.warn('controllo lavoro', e); }
       if (prima !== l.scaricati.length + (l.stato?.fase || '')) quandoCambia && quandoCambia(l);
+      document.dispatchEvent(new CustomEvent('leggio-lavoro', { detail: l }));
     }
   };
   clearInterval(_giro);
@@ -338,4 +393,5 @@ export class LettoreAudio {
 
 export async function salvaConfigurazione(token, repo) {
   await salvaImpostazioni({ githubToken: token.trim(), githubRepo: (repo || REPO_PREDEFINITO).trim() });
+  try { localStorage.setItem('leggio-github', token.trim()); } catch { /* niente */ }
 }
