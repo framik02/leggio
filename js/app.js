@@ -1,7 +1,7 @@
 // Libreria, evidenziati, impostazioni e navigazione.
 import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, tempoOggi, chiediPersistenza } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, conferma, copertinaFinta, minuti } from './ui.js';
-import { importa, FORMATI, esportaEpub, esportaTxt, stampaPdf, originale, consegna, backupDati } from './libri.js';
+import { importa, FORMATI, esportaEpub, esportaTxt, stampaPdf, originale, consegna } from './libri.js';
 import { voci, prova, etichettaQualita, disponibile } from './voce.js';
 
 const radice = document.getElementById('app');
@@ -221,6 +221,43 @@ async function sezioneAudio() {
     h('button', { class: `btn largo ${collegato ? '' : 'primario'}`, onclick: () => configuraGithub(() => vistaImpostazioni()) }, collegato ? 'Cambia codice di accesso' : 'Collega GitHub'));
 }
 
+async function sezioneCopia() {
+  const { dimensioni, creaCopia, ripristina } = await import('./copia.js');
+  const imp = await impostazioni();
+  const d = await dimensioni();
+  const mb = b => `${Math.max(1, Math.round(b / 1048576))} MB`;
+  let conAudio = false;
+  const quando = imp.ultimaCopia ? `Ultima copia: ${new Date(imp.ultimaCopia).toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })}.` : 'Non hai ancora fatto una copia.';
+  const input = h('input', { type: 'file', accept: '.zip,application/zip', hidden: true, onchange: async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!(await conferma('Ripristinare la copia?', 'Libri, note, voci e impostazioni della copia tornano sul telefono. Quello che hai già e non è nella copia resta.', 'Ripristina', false))) return;
+    const av = avviso('Ripristino…', { fisso: true });
+    try {
+      const r = await ripristina(f, p => { av.firstChild.textContent = `Ripristino… ${Math.round(p * 100)}%`; });
+      av.remove();
+      avviso(`Ripristinati ${r.libri} libri`);
+      setTimeout(() => location.reload(), 1200);
+    } catch (err) { av.remove(); avviso(err.message || 'Ripristino non riuscito', { durata: 6000 }); }
+  } });
+  const salva = h('button', { class: 'btn primario largo', onclick: async () => {
+    const av = avviso('Preparo la copia…', { fisso: true });
+    try {
+      const f = await creaCopia({ conAudio }, p => { av.firstChild.textContent = `Preparo la copia… ${Math.round(p * 100)}%`; });
+      av.remove();
+      await consegna(f);
+    } catch (err) { av.remove(); avviso(err.message || 'Copia non riuscita', { durata: 6000 }); }
+  } }, icona('condividi', 18), 'Salva una copia completa');
+  return h('div', { class: 'copia' },
+    h('p', { class: 'nota' }, `Un file solo con libri, evidenziati, note, segnalibri, pronunce, voci registrate e impostazioni (${mb(d.libri + d.voci)}). Salvalo con Condividi › Salva su File, meglio su iCloud Drive: così sopravvive anche se cancelli l'app. ${quando}`),
+    d.audio ? h('label', { class: 'interruttore' }, h('span', {}, `Includi l'audio creato (${mb(d.audio)})`),
+      h('input', { type: 'checkbox', onchange: e => { conAudio = e.target.checked; } })) : null,
+    salva,
+    h('button', { class: 'btn largo', onclick: () => input.click() }, 'Ripristina da una copia'),
+    h('p', { class: 'nota' }, 'Il codice di accesso a GitHub non entra nella copia.'),
+    input);
+}
+
 async function vistaImpostazioni() {
   const imp = await impostazioni();
   let regole = await dizionario();
@@ -278,8 +315,8 @@ async function vistaImpostazioni() {
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Dati'),
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
-      h('button', { class: 'btn largo', onclick: async () => consegna(await backupDati()) }, icona('condividi', 18), 'Copia di sicurezza di note e progressi')),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.2')),
+      await sezioneCopia()),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.2.1')),
   schede('impostazioni'));
 }
 

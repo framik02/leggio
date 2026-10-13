@@ -383,3 +383,5 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 .l-voce { color: var(--accento); font-weight: 600; opacity: 1; }
 .l-info-testo { gap: 10px; }
 .l-info-testo > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.copia { display: grid; gap: 10px; }

@@ -63,6 +63,13 @@ export const db = {
   async tutti(negozio) {
     return tx([negozio], 'readonly', t => rich(t.objectStore(negozio).getAll()));
   },
+  async coppie(negozio) {
+    return tx([negozio], 'readonly', async t => {
+      const s = t.objectStore(negozio);
+      const [k, v] = await Promise.all([rich(s.getAllKeys()), rich(s.getAll())]);
+      return k.map((x, i) => [x, v[i]]);
+    });
+  },
   async perIndice(negozio, indice, valore) {
     return tx([negozio], 'readonly', t => rich(t.objectStore(negozio).index(indice).getAll(valore)));
   },
