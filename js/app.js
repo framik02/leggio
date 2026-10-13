@@ -1,5 +1,5 @@
 // Libreria, evidenziati, impostazioni e navigazione.
-import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, tempoOggi } from './db.js';
+import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, tempoOggi, chiediPersistenza } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, conferma, copertinaFinta, minuti } from './ui.js';
 import { importa, FORMATI, esportaEpub, esportaTxt, stampaPdf, originale, consegna, backupDati } from './libri.js';
 import { voci, prova, etichettaQualita, disponibile } from './voce.js';
@@ -22,7 +22,17 @@ async function instrada() {
   if (sezione === 'impostazioni') return vistaImpostazioni();
   return vistaLibreria();
 }
-window.addEventListener('hashchange', instrada);
+window.addEventListener('hashchange', () => instrada().catch(mostraErrore));
+
+function mostraErrore(e) {
+  console.error(e);
+  radice.replaceChildren(h('main', { class: 'vista' }, h('section', { class: 'benvenuto' },
+    h('h2', {}, "Qualcosa non va con l'archivio"),
+    h('p', {}, String(e && e.message || e)),
+    h('button', { class: 'btn primario', onclick: () => location.reload() }, 'Ricarica'))));
+}
+
+export const installata = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
 function schede(attiva) {
   const v = (k, ic, t) => h('a', { href: `#/${k}`, class: attiva === k ? 'attiva' : '' }, icona(ic), h('span', {}, t));
@@ -107,9 +117,14 @@ async function vistaLibreria() {
     h('p', {}, 'Importa EPUB, PDF, TXT, Markdown, HTML o FB2 dall\'app File. I libri restano su questo telefono.'),
     h('button', { class: 'btn primario', onclick: () => input.click() }, icona('piu', 18), 'Importa un libro')) : null;
 
+  const iOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const avvisoBrowser = iOS && !installata() ? h('div', { class: 'avviso-browser' },
+    h('strong', {}, 'Stai usando Leggio dentro Safari.'),
+    h('p', {}, 'Safari e l\'icona sulla schermata Home tengono due librerie separate. Aggiungi Leggio alla Home (Condividi › Aggiungi alla schermata Home) e importa i libri da lì.')) : null;
+
   const fab = h('button', { class: 'fab', 'aria-label': 'Importa libri', onclick: () => input.click() }, icona('piu', 26));
 
-  radice.replaceChildren(h('main', { class: 'vista libreria' }, testa, continua, vuota,
+  radice.replaceChildren(h('main', { class: 'vista libreria' }, testa, avvisoBrowser, continua, vuota,
     libri.length ? h('div', { class: 'strumenti' }, h('div', { class: 'cerca-riga' }, cercaCampo, selOrdine), filtri) : null,
     libri.length ? griglia : null, input), libri.length ? fab : null, schede(''));
   disegnaGriglia();
@@ -244,9 +259,10 @@ async function vistaImpostazioni() {
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Obiettivo'),
       numero('obiettivo', 'Minuti al giorno', 5, 120, 5, 'min')),
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Dati'),
-      h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Aggiungi Leggio alla schermata Home per proteggere l\'archivio.'}`),
+      h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
+      h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       h('button', { class: 'btn largo', onclick: async () => consegna(await backupDati()) }, icona('condividi', 18), 'Copia di sicurezza di note e progressi')),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.1')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.1.1')),
   schede('impostazioni'));
 }
 
@@ -254,4 +270,5 @@ async function vistaImpostazioni() {
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
-instrada();
+if (installata()) chiediPersistenza();
+instrada().catch(mostraErrore);

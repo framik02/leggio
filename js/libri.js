@@ -41,7 +41,11 @@ export async function importa(file, avanzamento) {
     voce: '',
     velocita: null,
   };
-  await db.salvaLibro(libro, ris.capitoli, ris.risorse, { blob: file, nome: file.name, tipo: file.type });
+  // Su iOS un File scelto dall'utente punta a una copia temporanea: si salva il contenuto.
+  const copia = new Blob([await file.arrayBuffer()], { type: file.type || 'application/octet-stream' });
+  await db.salvaLibro(libro, ris.capitoli, ris.risorse, { blob: copia, nome: file.name, tipo: file.type });
+  const verifica = await db.get('libri', id);
+  if (!verifica) throw new Error("Il telefono non ha salvato il libro. Riprova dall'app aggiunta alla schermata Home.");
   chiediPersistenza();
   return libro;
 }

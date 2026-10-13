@@ -31,7 +31,7 @@ function rich(r) {
 async function tx(negozi, modo, fn) {
   const db = await apri();
   return new Promise((ok, ko) => {
-    const t = db.transaction(negozi, modo);
+    const t = modo === 'readwrite' ? db.transaction(negozi, modo, { durability: 'strict' }) : db.transaction(negozi, modo);
     let ris;
     Promise.resolve(fn(t)).then(v => { ris = v; }, ko);
     t.oncomplete = () => ok(ris);

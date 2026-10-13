@@ -120,6 +120,9 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 .fab { position: fixed; right: max(16px, calc(50vw - 474px)); bottom: calc(84px + var(--sotto)); width: 56px; height: 56px; border-radius: 18px; background: var(--accento); color: #fff; display: grid; place-items: center; box-shadow: 0 6px 20px rgba(180, 83, 42, .35); z-index: 21; transition: transform .12s; }
 .fab:active { transform: scale(.94); }
 
+.avviso-browser { background: var(--accento-velo); border-radius: 16px; padding: 14px 16px; margin-bottom: 20px; font-size: 14px; }
+.avviso-browser p { margin: 4px 0 0; color: var(--accento-scuro); }
+
 /* ------------------------------------------------------------ libreria */
 .cop { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 3px 6px 6px 3px; box-shadow: 0 1px 1px rgba(0, 0, 0, .08), 0 6px 16px -4px rgba(40, 30, 20, .28); background: #E9E3D8; overflow: hidden; position: relative; }
 .cop.piccola { width: 64px; flex: none; }
