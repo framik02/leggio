@@ -58,7 +58,7 @@ export function applicaDizionario(testo, regole, lingua, libro) {
 }
 
 // Pulizia del testo prima della sintesi.
-function perVoce(t) {
+export function perVoce(t) {
   return t
     .replace(/\[\d+\]|\(\d+\)/g, '')            // rimandi alle note
     .replace(/[«»“”"]/g, '')

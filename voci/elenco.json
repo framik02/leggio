@@ -1,0 +1,119 @@
+[
+ {
+  "id": "kokoro:if_sara",
+  "motore": "kokoro",
+  "nome": "if_sara",
+  "lingue": [
+   "it"
+  ],
+  "file": "kokoro_if_sara.mp3"
+ },
+ {
+  "id": "kokoro:im_nicola",
+  "motore": "kokoro",
+  "nome": "im_nicola",
+  "lingue": [
+   "it"
+  ],
+  "file": "kokoro_im_nicola.mp3"
+ },
+ {
+  "id": "kokoro:af_heart",
+  "motore": "kokoro",
+  "nome": "af_heart",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_af_heart.mp3"
+ },
+ {
+  "id": "kokoro:af_bella",
+  "motore": "kokoro",
+  "nome": "af_bella",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_af_bella.mp3"
+ },
+ {
+  "id": "kokoro:af_nicole",
+  "motore": "kokoro",
+  "nome": "af_nicole",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_af_nicole.mp3"
+ },
+ {
+  "id": "kokoro:af_sarah",
+  "motore": "kokoro",
+  "nome": "af_sarah",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_af_sarah.mp3"
+ },
+ {
+  "id": "kokoro:am_michael",
+  "motore": "kokoro",
+  "nome": "am_michael",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_am_michael.mp3"
+ },
+ {
+  "id": "kokoro:am_fenrir",
+  "motore": "kokoro",
+  "nome": "am_fenrir",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_am_fenrir.mp3"
+ },
+ {
+  "id": "kokoro:am_puck",
+  "motore": "kokoro",
+  "nome": "am_puck",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_am_puck.mp3"
+ },
+ {
+  "id": "kokoro:bf_emma",
+  "motore": "kokoro",
+  "nome": "bf_emma",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_bf_emma.mp3"
+ },
+ {
+  "id": "kokoro:bf_isabella",
+  "motore": "kokoro",
+  "nome": "bf_isabella",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_bf_isabella.mp3"
+ },
+ {
+  "id": "kokoro:bm_george",
+  "motore": "kokoro",
+  "nome": "bm_george",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_bm_george.mp3"
+ },
+ {
+  "id": "kokoro:bm_fable",
+  "motore": "kokoro",
+  "nome": "bm_fable",
+  "lingue": [
+   "en"
+  ],
+  "file": "kokoro_bm_fable.mp3"
+ }
+]

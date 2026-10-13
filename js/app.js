@@ -10,6 +10,8 @@ let lettoreAperto = null;
 
 // ---------------------------------------------------------------- navigazione
 async function instrada() {
+  // Cambiando pagina si chiudono i fogli rimasti aperti.
+  document.querySelectorAll('.foglio, .foglio-sfondo').forEach(e => e.remove());
   const [, sezione, arg] = (location.hash || '#/').split('/');
   if (lettoreAperto && sezione !== 'libro') { lettoreAperto = null; }
   if (sezione === 'libro' && arg) {
@@ -205,6 +207,20 @@ async function vistaEvidenziati() {
 }
 
 // ---------------------------------------------------------------- impostazioni
+async function sezioneAudio() {
+  const imp = await impostazioni();
+  const collegato = !!imp.githubToken;
+  const lavori = (await db.tutti('lavori')).filter(l => !l.chiuso);
+  const audio = await db.tutti('audio');
+  const mb = audio.reduce((s, a) => s + (a.blob?.size || 0), 0) / 1048576;
+  const { configuraGithub } = await import('./vocipanel.js');
+  return h('section', { class: 'imp-sez' }, h('h2', {}, 'Audio generato'),
+    h('p', { class: 'nota' }, 'Voci naturali e voce clonata, create gratis su Kaggle e scaricate sul telefono. Si ascoltano anche a schermo spento.'),
+    h('p', { class: 'nota' }, collegato ? `Collegato a ${imp.githubRepo || 'framik02/leggio-audio'}.` : 'Non ancora collegato.',
+      ` ${audio.length} capitoli scaricati, ${mb.toFixed(0)} MB.`, lavori.length ? ` ${lavori.length} lavori in corso.` : ''),
+    h('button', { class: `btn largo ${collegato ? '' : 'primario'}`, onclick: () => configuraGithub(() => vistaImpostazioni()) }, collegato ? 'Cambia codice di accesso' : 'Collega GitHub'));
+}
+
 async function vistaImpostazioni() {
   const imp = await impostazioni();
   let regole = await dizionario();
@@ -250,6 +266,7 @@ async function vistaImpostazioni() {
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Voci'),
       h('p', { class: 'nota' }, 'La voce si sceglie per lingua, e ogni libro può averne una sua dal lettore. Per voci più naturali scarica le versioni premium o avanzate in Impostazioni › Accessibilità › Contenuto letto ad alta voce › Voci.'),
       sezVoci),
+    await sezioneAudio(),
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Tono della lettura'),
       toggle('dialoghiVivaci', 'Dialoghi più vivaci'),
       numero('pausaParagrafo', 'Pausa fra paragrafi', 0, 1200, 50, 'ms'),
@@ -262,7 +279,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       h('button', { class: 'btn largo', onclick: async () => consegna(await backupDati()) }, icona('condividi', 18), 'Copia di sicurezza di note e progressi')),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.1.1')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.2')),
   schede('impostazioni'));
 }
 
@@ -271,4 +288,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 if (installata()) chiediPersistenza();
+import('./audio.js').then(m => m.avviaControlli(l => {
+  avviso(`Audio: ${l.scaricati.length} di ${l.capitoli.length} capitoli pronti`);
+  if (!location.hash.startsWith('#/libro')) instrada().catch(mostraErrore);
+}));
 instrada().catch(mostraErrore);

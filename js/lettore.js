@@ -1,6 +1,7 @@
 // La vista di lettura: testo, indice, tipografia, evidenziati e ascolto.
 import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, aggiungiTempo, nuovoId } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, minuti, pressioneLunga } from './ui.js';
+import { LettoreAudio, nomeVoce } from './audio.js';
 import { Lettore, frasiDalCapitolo, voci, trovaVoce, prova, etichettaQualita, applicaDizionario, disponibile } from './voce.js';
 
 const TEMI = {
@@ -32,13 +33,18 @@ export async function apriLettore(radice, id, esci) {
   let urlImg = [];
   let attivo = true;
 
-  const lettore = new Lettore();
-  lettore.lingua = libro.lingua;
-  lettore.libro = id;
-  lettore.regole = regole;
-  lettore.velocita = libro.velocita || imp.velocita;
-  lettore.opz = { pausaParagrafo: imp.pausaParagrafo, pausaScena: imp.pausaScena, dialoghiVivaci: imp.dialoghiVivaci };
-  trovaVoce(libro.lingua, libro.voce || imp[`voce_${libro.lingua}`]).then(v => { lettore.voce = v; });
+  // Due motori: la voce del telefono e l'audio creato, che va anche a schermo spento.
+  const sintesi = new Lettore();
+  sintesi.lingua = libro.lingua;
+  sintesi.libro = id;
+  sintesi.regole = regole;
+  sintesi.velocita = libro.velocita || imp.velocita;
+  sintesi.opz = { pausaParagrafo: imp.pausaParagrafo, pausaScena: imp.pausaScena, dialoghiVivaci: imp.dialoghiVivaci };
+  trovaVoce(libro.lingua, libro.voce || imp[`voce_${libro.lingua}`]).then(v => { sintesi.voce = v; });
+  const registrato = new LettoreAudio();
+  registrato.velocita = sintesi.velocita;
+  let lettore = sintesi;
+  let vociMie = await db.tutti('voci');
 
   // ------------------------------------------------------------ struttura
   const titoloCap = h('div', { class: 'l-titolo' });
@@ -54,8 +60,9 @@ export async function apriLettore(radice, id, esci) {
   const scorri = h('div', { class: 'l-scorri' }, pagina, fondoCap);
   const infoSx = h('span');
   const infoDx = h('span');
+  const etichettaVoce = h('span', { class: 'l-voce' });
   const barraProg = h('div', { class: 'l-prog-riemp' });
-  const info = h('div', { class: 'l-info' }, h('div', { class: 'l-prog' }, barraProg), h('div', { class: 'l-info-testo' }, infoSx, infoDx));
+  const info = h('div', { class: 'l-info' }, h('div', { class: 'l-prog' }, barraProg), h('div', { class: 'l-info-testo' }, infoSx, etichettaVoce, infoDx));
 
   const btnPlay = h('button', { class: 'p-play', 'aria-label': 'Ascolta', onclick: () => alternaAscolto() }, icona('play', 26));
   const chipVel = h('button', { class: 'p-chip', onclick: () => cambiaVelocita() });
@@ -101,7 +108,7 @@ export async function apriLettore(radice, id, esci) {
     }
     titoloCap.textContent = c.titolo;
     frasi = frasiDalCapitolo(pagina);
-    lettore.imposta(frasi);
+    await scegliMotore(n);
     disegnaEvidenziati();
     fondoCap.replaceChildren(
       n < libro.capitoli.length - 1
@@ -117,6 +124,18 @@ export async function apriLettore(radice, id, esci) {
       salvaPosizione();
     });
     aggiornaSegno();
+  }
+
+  // Audio creato per questo capitolo? Allora si ascolta quello.
+  async function scegliMotore(n) {
+    const reg = await db.get('audio', [id, n]);
+    if (lettore === registrato && registrato.attivo && !reg) registrato.pausa();
+    lettore = reg ? registrato : sintesi;
+    if (reg) registrato.carica(reg);
+    sintesi.imposta(frasi);
+    registrato.imposta(frasi);
+    etichettaVoce.textContent = reg ? nomeVoce(reg.voce, vociMie) : '';
+    el.classList.toggle('con-audio', !!reg);
   }
 
   function spanDi(idFrase) { return pagina.querySelector(`span.s[data-s="${idFrase}"]`); }
@@ -186,7 +205,7 @@ export async function apriLettore(radice, id, esci) {
     seguendo = true; torna.classList.remove('visibile');
     if (subito && frasi[lettore.indice]) { ultimoAuto = Date.now(); vaiAFrase(frasi[lettore.indice].id); }
   }
-  lettore.onFrase = f => {
+  sintesi.onFrase = registrato.onFrase = f => {
     pagina.querySelectorAll('.in-voce').forEach(s => s.classList.remove('in-voce'));
     f.span.forEach(s => s.classList.add('in-voce'));
     if (seguendo && imp.segui) {
@@ -198,41 +217,51 @@ export async function apriLettore(radice, id, esci) {
       navigator.mediaSession.metadata = new MediaMetadata({ title: libro.capitoli[cap].titolo, artist: libro.titolo, album: libro.autore || '' });
     }
   };
-  lettore.onStato = acceso => {
+  sintesi.onStato = registrato.onStato = acceso => {
     btnPlay.replaceChildren(icona(acceso ? 'pausa' : 'play', 26));
     el.classList.toggle('ascolto', acceso);
     if (!acceso) { torna.classList.remove('visibile'); pagina.querySelectorAll('.in-voce').forEach(s => s.classList.remove('in-voce')); }
   };
-  lettore.onFine = async () => {
+  sintesi.onFine = registrato.onFine = async () => {
     if (timerFineCap) { timerFineCap = false; aggiornaTimer(); return; }
     if (cap < libro.capitoli.length - 1) {
       await caricaCapitolo(cap + 1);
-      setTimeout(() => lettore.play(0), 700);
+      // L'audio creato riparte subito, anche a schermo spento.
+      if (lettore === registrato) lettore.play(0).catch(() => {});
+      else if (document.visibilityState === 'visible') setTimeout(() => lettore.play(0), 700);
     }
   };
   if ('mediaSession' in navigator) {
-    navigator.mediaSession.setActionHandler('play', () => lettore.play());
+    navigator.mediaSession.setActionHandler('play', () => { const r = lettore.play(); if (r && r.catch) r.catch(() => {}); });
+    try {
+      navigator.mediaSession.setActionHandler('seekbackward', () => lettore === registrato ? registrato.salta(-15) : lettore.indietro());
+      navigator.mediaSession.setActionHandler('seekforward', () => lettore === registrato ? registrato.salta(15) : lettore.avanti());
+      navigator.mediaSession.setActionHandler('seekto', d => { if (lettore === registrato && d.seekTime != null) { registrato.audio.currentTime = d.seekTime; registrato._segui(); } });
+    } catch { /* non tutti i browser li hanno */ }
     navigator.mediaSession.setActionHandler('pause', () => lettore.pausa());
     navigator.mediaSession.setActionHandler('nexttrack', () => lettore.avanti());
     navigator.mediaSession.setActionHandler('previoustrack', () => lettore.indietro());
   }
 
   function alternaAscolto(daFrase) {
-    if (!disponibile()) { avviso('Questo browser non ha la sintesi vocale'); return; }
+    if (lettore === sintesi && !disponibile()) { avviso('Questo browser non ha la sintesi vocale'); return; }
     if (lettore.attivo && daFrase === undefined) { lettore.pausa(); salvaPosizione(); return; }
     const idx = daFrase !== undefined ? frasi.findIndex(f => f.id === daFrase) : frasi.findIndex(f => f.id >= fraseInVista());
     segui(false);
-    lettore.play(Math.max(0, idx));
+    const r = lettore.play(Math.max(0, idx));
+    if (r && r.catch) r.catch(() => avviso('Tocca di nuovo play per ascoltare'));
   }
 
   function cambiaVelocita() {
     const passi = [0.8, 0.9, 1, 1.1, 1.25, 1.4, 1.6, 1.8, 2];
     const i = passi.findIndex(v => v >= lettore.velocita - 0.001);
-    lettore.velocita = passi[(i + 1) % passi.length];
-    chipVel.textContent = `${String(lettore.velocita).replace('.', ',')}×`;
-    libro.velocita = lettore.velocita;
+    const v = passi[(i + 1) % passi.length];
+    sintesi.velocita = v;
+    registrato.velocitaAudio = v;
+    chipVel.textContent = `${String(v).replace('.', ',')}×`;
+    libro.velocita = v;
     db.put('libri', libro);
-    if (lettore.attivo) lettore.vai(lettore.indice);
+    if (lettore === sintesi && lettore.attivo) lettore.vai(lettore.indice);
   }
 
   let timer = null, timerFine = 0, timerFineCap = false, timerTick = null;
@@ -261,35 +290,22 @@ export async function apriLettore(radice, id, esci) {
   }
 
   async function apriVoci() {
-    const lingue = { it: 'Italiano', en: 'Inglese' };
-    const corpo = h('div', { class: 'voci' });
-    const f = foglio('Voce', corpo, { alto: true });
-    const disegna = async () => {
-      const elenco = await voci(libro.lingua);
-      const attuale = lettore.voce;
-      corpo.replaceChildren(
-        h('div', { class: 'segmenti' }, Object.entries(lingue).map(([k, v]) =>
-          h('button', { class: libro.lingua === k ? 'attivo' : '', onclick: async () => {
-            libro.lingua = k; lettore.lingua = k; pagina.lang = k; await db.put('libri', libro);
-            lettore.voce = await trovaVoce(k, imp[`voce_${k}`]); disegna();
-          } }, v))),
-        h('p', { class: 'nota' }, 'La lingua del libro sceglie le voci. Le voci premium e avanzate suonano molto meglio: si scaricano dalle Impostazioni dell\'iPhone, in Accessibilità › Contenuto letto ad alta voce › Voci.'),
-        elenco.length ? h('div', { class: 'elenco-voci' }, elenco.map(v => {
-          const q = etichettaQualita(v);
-          return h('div', { class: `voce-riga ${attuale && attuale.voiceURI === v.voiceURI ? 'scelta-attiva' : ''}` },
-            h('button', { class: 'voce-nome', onclick: async () => {
-              lettore.voce = v; libro.voce = v.voiceURI; await db.put('libri', libro);
-              await salvaImpostazioni({ [`voce_${libro.lingua}`]: v.voiceURI });
-              if (lettore.attivo) lettore.vai(lettore.indice);
-              disegna();
-            } }, h('span', {}, v.name.replace(/\s*\(.*\)$/, '')), q ? h('span', { class: `badge ${q}` }, q) : null, h('span', { class: 'voce-lingua' }, v.lang)),
-            bottoneIcona('orecchio', 'Prova', () => prova(v, libro.lingua === 'en' ? 'This is how I will read your book.' : 'Ecco come leggerò il tuo libro.', lettore.velocita)));
-        })) : h('p', { class: 'nota' }, 'Nessuna voce trovata per questa lingua.'),
-        h('div', { class: 'voce-clonata-annuncio' },
-          h('strong', {}, 'Voci neurali e voce clonata'),
-          h('p', {}, 'In arrivo: audio generato gratis sulla GPU di Kaggle, con una voce di qualità o con la tua voce registrata qui. Si ascolta anche a schermo spento.')));
-    };
-    disegna();
+    const { apriPannelloVoci } = await import('./vocipanel.js');
+    apriPannelloVoci({
+      libro, cap,
+      voceTelefono: () => sintesi.voce,
+      scegliTelefono: async v => {
+        sintesi.voce = v; libro.voce = v.voiceURI; await db.put('libri', libro);
+        await salvaImpostazioni({ [`voce_${libro.lingua}`]: v.voiceURI });
+        if (lettore === sintesi && sintesi.attivo) sintesi.vai(sintesi.indice);
+      },
+      dopoCambio: async () => {
+        sintesi.lingua = libro.lingua; pagina.lang = libro.lingua;
+        sintesi.voce = await trovaVoce(libro.lingua, libro.voce || imp[`voce_${libro.lingua}`]);
+        vociMie = await db.tutti('voci');
+        if (!lettore.attivo) await scegliMotore(cap);
+      },
+    });
   }
 
   // ------------------------------------------------------------ evidenziati e segnalibri
@@ -380,13 +396,13 @@ export async function apriLettore(radice, id, esci) {
       h('div', { class: 'parole' }, parole.map(p => h('button', { class: 'parola', onclick: e => { da.value = p; a.value = a.value || p; a.focus(); e.currentTarget.parentNode.querySelectorAll('.attivo').forEach(x => x.classList.remove('attivo')); e.currentTarget.classList.add('attivo'); } }, p))),
       da, a, seg,
       h('div', { class: 'riga-bottoni' },
-        h('button', { class: 'btn', onclick: () => prova(lettore.voce, applicaDizionario(testo, [{ da: da.value, a: a.value }], libro.lingua, id), lettore.velocita) }, icona('orecchio', 18), 'Prova'),
+        h('button', { class: 'btn', onclick: () => prova(sintesi.voce, applicaDizionario(testo, [{ da: da.value, a: a.value }], libro.lingua, id), lettore.velocita) }, icona('orecchio', 18), 'Prova'),
         h('button', { class: 'btn primario', onclick: async () => {
           if (!da.value.trim() || !a.value.trim()) return;
           regole = regole.filter(r => !(r.da.toLowerCase() === da.value.trim().toLowerCase() && (r.libro || null) === (ambito === 'libro' ? id : null)));
           regole.push({ da: da.value.trim(), a: a.value.trim(), lingua: libro.lingua, libro: ambito === 'libro' ? id : null, data: Date.now() });
           await salvaDizionario(regole);
-          lettore.regole = regole;
+          sintesi.regole = regole;
           f.chiudi(); avviso('Pronuncia imparata');
         } }, 'Salva'))));
   }
@@ -482,7 +498,8 @@ export async function apriLettore(radice, id, esci) {
   // ------------------------------------------------------------ uscita
   function chiudi() {
     attivo = false;
-    lettore.pausa();
+    sintesi.pausa();
+    registrato.scarica();
     clearInterval(orologio); clearInterval(timerTick); clearTimeout(timer);
     salvaPosizione();
     db.put('libri', libro);

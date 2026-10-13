@@ -1,25 +1,33 @@
 // Archivio locale su IndexedDB. Tutto resta sul dispositivo.
 
 const NOME = 'leggio';
-const VERSIONE = 1;
+const VERSIONE = 2;
 let _db = null;
 
 function apri() {
   if (_db) return Promise.resolve(_db);
   return new Promise((ok, ko) => {
     const req = indexedDB.open(NOME, VERSIONE);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = e => {
       const db = req.result;
-      db.createObjectStore('libri', { keyPath: 'id' });
-      db.createObjectStore('capitoli', { keyPath: ['libro', 'n'] });
-      db.createObjectStore('risorse', { keyPath: ['libro', 'percorso'] });
-      db.createObjectStore('originali', { keyPath: 'libro' });
-      const ev = db.createObjectStore('evidenziati', { keyPath: 'id' });
-      ev.createIndex('libro', 'libro');
-      db.createObjectStore('impostazioni');
-      db.createObjectStore('diario');
+      if (e.oldVersion < 1) {
+        db.createObjectStore('libri', { keyPath: 'id' });
+        db.createObjectStore('capitoli', { keyPath: ['libro', 'n'] });
+        db.createObjectStore('risorse', { keyPath: ['libro', 'percorso'] });
+        db.createObjectStore('originali', { keyPath: 'libro' });
+        const ev = db.createObjectStore('evidenziati', { keyPath: 'id' });
+        ev.createIndex('libro', 'libro');
+        db.createObjectStore('impostazioni');
+        db.createObjectStore('diario');
+      }
+      if (e.oldVersion < 2) {
+        // Audio generato: un capitolo per riga, i lavori in corso, le voci registrate.
+        db.createObjectStore('audio', { keyPath: ['libro', 'n'] });
+        db.createObjectStore('lavori', { keyPath: 'id' });
+        db.createObjectStore('voci', { keyPath: 'id' });
+      }
     };
-    req.onsuccess = () => { _db = req.result; ok(_db); };
+    req.onsuccess = () => { _db = req.result; _db.onversionchange = () => { _db.close(); _db = null; }; ok(_db); };
     req.onerror = () => ko(req.error);
   });
 }
@@ -75,13 +83,22 @@ export const db = {
 
   async eliminaLibro(id) {
     const ev = await this.perIndice('evidenziati', 'libro', id);
-    return tx(['libri', 'capitoli', 'risorse', 'originali', 'evidenziati'], 'readwrite', t => {
+    return tx(['libri', 'capitoli', 'risorse', 'originali', 'evidenziati', 'audio'], 'readwrite', t => {
+      t.objectStore('audio').delete(IDBKeyRange.bound([id, 0], [id, Infinity]));
       t.objectStore('libri').delete(id);
       t.objectStore('capitoli').delete(IDBKeyRange.bound([id, 0], [id, Infinity]));
       t.objectStore('risorse').delete(IDBKeyRange.bound([id, ''], [id, '￿']));
       t.objectStore('originali').delete(id);
       ev.forEach(e => t.objectStore('evidenziati').delete(e.id));
     });
+  },
+
+  async audioLibro(libro) {
+    const r = IDBKeyRange.bound([libro, 0], [libro, Infinity]);
+    return tx(['audio'], 'readonly', t => rich(t.objectStore('audio').getAll(r)));
+  },
+  async cancellaAudio(libro) {
+    return tx(['audio'], 'readwrite', t => rich(t.objectStore('audio').delete(IDBKeyRange.bound([libro, 0], [libro, Infinity]))));
   },
 
   async risorsa(libro, percorso) {

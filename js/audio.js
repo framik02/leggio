@@ -1,0 +1,341 @@
+// Audio generato: lavori su GitHub e Kaggle, scaricamento dei capitoli,
+// riproduzione con un vero file audio, che continua a schermo spento.
+import { db, impostazioni, salvaImpostazioni, dizionario } from './db.js';
+import { frasiDalCapitolo, applicaDizionario, perVoce } from './voce.js';
+
+export const REPO_PREDEFINITO = 'framik02/leggio-audio';
+
+// ---------------------------------------------------------------- GitHub
+async function conf() {
+  const imp = await impostazioni();
+  return { token: imp.githubToken || '', repo: imp.githubRepo || REPO_PREDEFINITO };
+}
+export async function configurato() { return !!(await conf()).token; }
+
+async function gh(percorso, opz = {}) {
+  const { token, repo } = await conf();
+  if (!token) throw new Error('Manca il codice di accesso a GitHub. Inseriscilo in Impostazioni › Audio generato.');
+  const url = percorso.startsWith('http') ? percorso : `https://api.github.com/repos/${repo}${percorso}`;
+  const r = await fetch(url, {
+    ...opz,
+    cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}`, Accept: opz.raw ? 'application/vnd.github.raw' : 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(opz.body ? { 'Content-Type': 'application/json' } : {}) },
+  });
+  if (opz.consenti404 && r.status === 404) return null;
+  if (!r.ok) {
+    let msg = `GitHub ha risposto ${r.status}`;
+    try { msg += ': ' + (await r.json()).message; } catch { /* niente */ }
+    if (r.status === 401) msg = 'Il codice di accesso a GitHub non è valido o è scaduto.';
+    if (r.status === 403 || r.status === 404) msg += '. Controlla che il codice abbia accesso a ' + (await conf()).repo + ' con i permessi Contents e Actions.';
+    throw new Error(msg);
+  }
+  if (opz.raw === 'blob') return r.blob();
+  if (opz.raw) return r.text();
+  return r.status === 204 ? null : r.json();
+}
+
+export async function verificaAccesso() {
+  const { repo } = await conf();
+  const info = await gh('');
+  if (!info.permissions?.push) throw new Error(`Il codice legge ${repo} ma non può scriverci.`);
+  await gh('/actions/workflows');
+  return info.full_name;
+}
+
+function base64(buf) {
+  const b = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+// Un solo commit con tutti i file del lavoro, su un ramo nuovo.
+async function creaRamo(ramo, file) {
+  const main = await gh('/git/ref/heads/main');
+  const base = await gh(`/git/commits/${main.object.sha}`);
+  const albero = [];
+  for (const f of file) {
+    const contenuto = typeof f.dati === 'string' ? base64(new TextEncoder().encode(f.dati)) : base64(await f.dati.arrayBuffer());
+    const blob = await gh('/git/blobs', { method: 'POST', body: JSON.stringify({ content: contenuto, encoding: 'base64' }) });
+    albero.push({ path: f.percorso, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+  const tree = await gh('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: base.tree.sha, tree: albero }) });
+  const commit = await gh('/git/commits', { method: 'POST', body: JSON.stringify({ message: `Lavoro ${ramo}`, tree: tree.sha, parents: [main.object.sha] }) });
+  await gh('/git/refs', { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${ramo}`, sha: commit.sha }) });
+}
+
+async function lancia(ramo, azione = 'avvia') {
+  await gh('/actions/workflows/lettura.yml/dispatches', { method: 'POST', body: JSON.stringify({ ref: 'main', inputs: { lavoro: ramo, azione } }) });
+}
+
+// ---------------------------------------------------------------- catalogo
+let _catalogo = null;
+export async function catalogo() {
+  if (_catalogo) return _catalogo;
+  try { _catalogo = await (await fetch('voci/elenco.json')).json(); } catch { _catalogo = []; }
+  return _catalogo;
+}
+
+const ACCENTO = { a: 'americano', b: 'britannico', i: 'italiano' };
+export function nomeVoce(id, voci = []) {
+  if (!id) return 'Voce del telefono';
+  if (id.startsWith('clonata:')) return voci.find(v => v.id === id.slice(8))?.nome || 'La tua voce';
+  if (id.startsWith('kokoro:')) {
+    const v = id.slice(7);
+    return v.slice(3, 4).toUpperCase() + v.slice(4);
+  }
+  return id.split(':')[1] || id;
+}
+export function descriviVoce(v) {
+  if (v.motore === 'kokoro') {
+    const sigla = v.nome.slice(0, 2);
+    return `${sigla[1] === 'f' ? 'Femminile' : 'Maschile'}, accento ${ACCENTO[sigla[0]] || ''} · veloce da creare`;
+  }
+  return 'Voce da studio, espressiva · più lenta da creare';
+}
+
+// ---------------------------------------------------------------- lavori
+
+// Stima in minuti del tempo di creazione, dalla lunghezza dell'audio.
+export function stima(parole, motore) {
+  const audio = parole / 150;
+  const calcolo = motore === 'kokoro' ? audio / 40 : audio * 0.5;
+  return { audio, attesa: calcolo + 7 };
+}
+
+// Prepara il testo come lo leggerebbe il telefono: stesse frasi, stesse pause.
+async function preparaCapitolo(libroId, n, imp, regole, lingua) {
+  const c = await db.get('capitoli', [libroId, n]);
+  const div = document.createElement('div');
+  div.innerHTML = c.html;
+  const frasi = frasiDalCapitolo(div);
+  const fuori = [];
+  for (const f of frasi) {
+    const t = perVoce(applicaDizionario(f.testo, regole, lingua, libroId));
+    if (!/[\p{L}\p{N}]/u.test(t)) continue;
+    let pausa = 60;
+    if (f.titolo) pausa = 900;
+    else if (f.scena) pausa = imp.pausaScena;
+    else if (f.fineBlocco) pausa = imp.pausaParagrafo;
+    fuori.push([f.id, t, f.titolo ? 't' : (f.dialogo ? 'd' : ''), pausa]);
+  }
+  return { n, titolo: c.titolo, frasi: fuori };
+}
+
+export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
+  const imp = await impostazioni();
+  const regole = await dizionario();
+  const motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : 'clonata';
+  const caps = [];
+  for (const [i, n] of capitoli.entries()) {
+    caps.push(await preparaCapitolo(libro.id, n, imp, regole, libro.lingua));
+    avanzamento && avanzamento(0.5 * (i + 1) / capitoli.length);
+  }
+  const id = `${libro.id}-${Date.now().toString(36)}`;
+  const ramo = `lavoro/${id}`;
+  const lavoro = { id, motore, voce: voceId, lingua: libro.lingua, opz: { dialoghiVivaci: imp.dialoghiVivaci }, titolo: libro.titolo, capitoli: caps };
+  const file = [{ percorso: 'lavoro/job.json', dati: JSON.stringify(lavoro) }];
+  if (motore === 'clonata') {
+    const voce = await db.get('voci', voceId.slice(8));
+    if (!voce) throw new Error('La voce registrata non c\'è più.');
+    voce.campioni.forEach((c, i) => file.push({ percorso: `lavoro/campioni/c${i}.${estensione(c.blob.type)}`, dati: c.blob }));
+  }
+  avanzamento && avanzamento(0.7);
+  await creaRamo(ramo, file);
+  avanzamento && avanzamento(0.9);
+  await lancia(ramo);
+  const rec = { id, ramo, libro: libro.id, voce: voceId, motore, capitoli, scaricati: [], creato: Date.now(), stato: { fase: 'in partenza' }, controllato: Date.now() };
+  await db.put('lavori', rec);
+  libro.voceAudio = voceId;
+  await db.put('libri', libro);
+  return rec;
+}
+
+function estensione(tipo) {
+  if (/mp4|m4a|aac/.test(tipo)) return 'm4a';
+  if (/webm/.test(tipo)) return 'webm';
+  if (/ogg/.test(tipo)) return 'ogg';
+  if (/wav/.test(tipo)) return 'wav';
+  return 'audio';
+}
+
+// Controlla un lavoro e scarica i capitoli pronti. Restituisce il lavoro aggiornato.
+export async function aggiornaLavoro(rec) {
+  const stato = await gh(`/contents/stato.json?ref=${encodeURIComponent(rec.ramo)}`, { raw: true, consenti404: true });
+  if (stato) { try { rec.stato = JSON.parse(stato); } catch { /* niente */ } }
+  const elenco = await gh(`/contents/audio?ref=${encodeURIComponent(rec.ramo)}`, { consenti404: true }) || [];
+  const pronti = elenco.filter(f => /^c\d+\.json$/.test(f.name)).map(f => +f.name.slice(1, -5));
+  for (const n of pronti) {
+    if (rec.scaricati.includes(n)) continue;
+    const nome = `c${String(n).padStart(3, '0')}`;
+    const tempi = JSON.parse(await gh(`/contents/audio/${nome}.json?ref=${encodeURIComponent(rec.ramo)}`, { raw: true }));
+    const blob = await gh(`/contents/audio/${nome}.mp3?ref=${encodeURIComponent(rec.ramo)}`, { raw: 'blob' });
+    await db.put('audio', { libro: rec.libro, n, blob: new Blob([await blob.arrayBuffer()], { type: 'audio/mpeg' }), tempi: tempi.frasi, durata: tempi.durata, voce: rec.voce, data: Date.now() });
+    rec.scaricati.push(n);
+    await db.put('lavori', rec);
+  }
+  const fase = rec.stato?.fase;
+  const tutti = rec.capitoli.every(n => rec.scaricati.includes(n));
+  if (tutti && fase === 'finito') {
+    rec.chiuso = Date.now();
+    await gh(`/git/refs/heads/${rec.ramo}`, { method: 'DELETE', consenti404: true }).catch(() => {});
+  }
+  // Nessuna notizia da tempo: si chiede a Kaggle che fine ha fatto il notebook.
+  const fermo = Date.now() - (rec.stato?.aggiornato ? rec.stato.aggiornato * 1000 : rec.creato);
+  if (!rec.chiuso && fase !== 'errore' && fermo > 25 * 60000 && Date.now() - (rec.controllato || 0) > 20 * 60000) {
+    rec.controllato = Date.now();
+    await lancia(rec.ramo, 'controlla').catch(() => {});
+  }
+  await db.put('lavori', rec);
+  return rec;
+}
+
+export async function riprendi(rec) {
+  rec.stato = { ...rec.stato, fase: 'in partenza', errore: null };
+  rec.controllato = Date.now();
+  await lancia(rec.ramo, 'avvia');
+  await db.put('lavori', rec);
+}
+
+export async function annulla(rec) {
+  await gh(`/git/refs/heads/${rec.ramo}`, { method: 'DELETE', consenti404: true }).catch(() => {});
+  await db.del('lavori', rec.id);
+}
+
+export async function lavoriAttivi(libro) {
+  const tutti = await db.tutti('lavori');
+  return tutti.filter(l => !l.chiuso && (!libro || l.libro === libro));
+}
+
+let _giro = null;
+export function avviaControlli(quandoCambia) {
+  const giro = async () => {
+    if (document.visibilityState !== 'visible' || !(await configurato())) return;
+    for (const l of await lavoriAttivi()) {
+      const prima = l.scaricati.length + (l.stato?.fase || '');
+      try { await aggiornaLavoro(l); } catch (e) { console.warn('controllo lavoro', e); }
+      if (prima !== l.scaricati.length + (l.stato?.fase || '')) quandoCambia && quandoCambia(l);
+    }
+  };
+  clearInterval(_giro);
+  _giro = setInterval(giro, 45000);
+  document.addEventListener('visibilitychange', giro);
+  setTimeout(giro, 1500);
+}
+
+// ---------------------------------------------------------------- riproduzione
+
+// Un solo elemento audio per tutta l'app: così iOS lascia passare da un
+// capitolo al successivo anche a schermo spento.
+let _el = null;
+export function elementoAudio() {
+  if (!_el) {
+    _el = new Audio();
+    _el.preload = 'auto';
+    _el.setAttribute('playsinline', '');
+    document.body.appendChild(_el);
+    _el.style.display = 'none';
+  }
+  return _el;
+}
+
+export class LettoreAudio {
+  constructor() {
+    this.audio = elementoAudio();
+    this.frasi = [];
+    this.indice = 0;
+    this.attivo = false;
+    this.velocita = 1;
+    this.tempi = [];
+    this.url = null;
+    this.onFrase = () => {};
+    this.onStato = () => {};
+    this.onFine = () => {};
+    this._raf = null;
+    this._fine = () => { this.attivo = false; this._ferma(); this.onStato(false); this.onFine(); };
+    this._tempo = () => this._segui();
+  }
+
+  carica(registro) {
+    if (this.url) URL.revokeObjectURL(this.url);
+    this.url = URL.createObjectURL(registro.blob);
+    this.audio.src = this.url;
+    this.tempi = registro.tempi; // [id, inizio, fine]
+    this.audio.playbackRate = this.velocita;
+    this.audio.onended = this._fine;
+    this.audio.ontimeupdate = this._tempo;
+  }
+
+  imposta(frasi) { this.frasi = frasi; }
+
+  _indiceFrase(id) { return this.frasi.findIndex(f => f.id === id); }
+
+  _inizio(i) {
+    const f = this.frasi[i];
+    const t = f && this.tempi.find(x => x[0] === f.id);
+    if (t) return t[1];
+    // Frase senza audio (solo punteggiatura): la successiva che ce l'ha.
+    for (let k = i + 1; k < this.frasi.length; k++) { const tt = this.tempi.find(x => x[0] === this.frasi[k].id); if (tt) return tt[1]; }
+    return this.audio.duration || 0;
+  }
+
+  _segui() {
+    const t = this.audio.currentTime;
+    let lo = 0, hi = this.tempi.length - 1, trovato = -1;
+    while (lo <= hi) { const m = (lo + hi) >> 1; if (this.tempi[m][1] <= t + 0.05) { trovato = m; lo = m + 1; } else hi = m - 1; }
+    if (trovato < 0) return;
+    const i = this._indiceFrase(this.tempi[trovato][0]);
+    if (i >= 0 && i !== this.indice) { this.indice = i; this.onFrase(this.frasi[i]); }
+    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && this.audio.duration) {
+      try { navigator.mediaSession.setPositionState({ duration: this.audio.duration, position: t, playbackRate: this.audio.playbackRate }); } catch { /* niente */ }
+    }
+  }
+
+  _loop() {
+    cancelAnimationFrame(this._raf);
+    const passo = () => { this._segui(); if (this.attivo) this._raf = requestAnimationFrame(passo); };
+    this._raf = requestAnimationFrame(passo);
+  }
+  _ferma() { cancelAnimationFrame(this._raf); }
+
+  async play(da) {
+    if (typeof da === 'number') { this.indice = da; this.audio.currentTime = this._inizio(da); }
+    this.audio.playbackRate = this.velocita;
+    this.attivo = true;
+    try { await this.audio.play(); } catch (e) { this.attivo = false; this.onStato(false); throw e; }
+    this.onStato(true);
+    this.onFrase(this.frasi[this.indice]);
+    this._loop();
+  }
+
+  pausa() {
+    this.attivo = false;
+    this._ferma();
+    this.audio.pause();
+    this.onStato(false);
+  }
+
+  vai(i) {
+    this.indice = Math.max(0, Math.min(i, this.frasi.length - 1));
+    this.audio.currentTime = this._inizio(this.indice);
+    this.onFrase(this.frasi[this.indice]);
+  }
+  avanti() { this.vai(this.indice + 1); }
+  indietro() {
+    // Come i lettori audio: se la frase è appena iniziata si torna alla precedente.
+    const inizio = this._inizio(this.indice);
+    this.vai(this.audio.currentTime - inizio > 1.5 ? this.indice : this.indice - 1);
+  }
+  salta(sec) { this.audio.currentTime = Math.max(0, Math.min(this.audio.duration || 0, this.audio.currentTime + sec)); this._segui(); }
+
+  set velocitaAudio(v) { this.velocita = v; this.audio.playbackRate = v; }
+
+  scarica() {
+    this.pausa();
+    this.audio.onended = null; this.audio.ontimeupdate = null;
+  }
+}
+
+export async function salvaConfigurazione(token, repo) {
+  await salvaImpostazioni({ githubToken: token.trim(), githubRepo: (repo || REPO_PREDEFINITO).trim() });
+}

@@ -339,3 +339,47 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 .voce-clonata-annuncio p { margin: 4px 0 0; font-size: 14px; color: var(--secondario); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ------------------------------------------------------------ voci e audio creato */
+.segmenti.piccoli button { height: 30px; font-size: 13px; }
+.voci-contenuto { display: grid; gap: 12px; }
+.gruppo-voci { display: grid; gap: 4px; margin-top: 6px; }
+.gruppo-voci h3 { font-size: 15px; font-weight: 650; }
+.voce-testi { display: flex; flex-direction: column; gap: 1px; text-align: left; }
+.voce-testi small { font-size: 12.5px; color: var(--secondario); font-weight: 400; }
+.voce-riga.scelta-attiva .voce-testi small { color: var(--accento); }
+
+.audio-libro { display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: #F7F2EA; }
+.audio-libro:empty { display: none; }
+.al-riga { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.al-riga strong { display: block; font-size: 15px; }
+.al-riga small { color: var(--secondario); font-size: 13px; }
+.al-togli { color: var(--pericolo); font-weight: 600; font-size: 14px; flex: none; }
+.al-lavoro { display: grid; gap: 8px; }
+.al-lavoro p { margin: 0; font-size: 14px; }
+.al-lavoro.errore p { color: var(--pericolo); }
+.al-barra { height: 6px; border-radius: 3px; background: #E8E0D3; overflow: hidden; }
+.al-barra div { height: 100%; background: var(--accento); border-radius: 3px; transition: width .4s; }
+.al-lavoro .btn { height: 38px; font-size: 14px; }
+.al-nota { margin: 0; }
+
+.guida p { margin: 0; }
+.guida ol { margin: 0; padding-left: 1.3em; display: grid; gap: 6px; font-size: 15px; }
+.guida a { color: var(--accento); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+.registra { display: grid; gap: 14px; }
+.reg-testo { margin: 0; font-family: var(--serif); font-size: 19px; line-height: 1.55; padding: 16px 18px; border-radius: 16px; background: #F7F2EA; }
+.reg-centro { display: flex; align-items: center; gap: 18px; justify-content: center; }
+.reg-tasto { width: 76px; height: 76px; border-radius: 50%; border: 4px solid var(--inchiostro); display: grid; place-items: center; flex: none; }
+.reg-tasto span { width: 54px; height: 54px; border-radius: 50%; background: var(--pericolo); transition: all .2s; }
+.reg-tasto.attivo span { width: 28px; height: 28px; border-radius: 7px; }
+.reg-tempo { font-size: 28px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.reg-livello { width: 120px; height: 6px; border-radius: 3px; background: #EAE3D8; overflow: hidden; margin-top: 6px; }
+.reg-livello div { height: 100%; width: 0; background: var(--accento); transition: width .08s; }
+.reg-prese { display: grid; gap: 4px; }
+.reg-presa { display: flex; align-items: center; gap: 4px; padding: 6px 4px 6px 12px; border-radius: 12px; background: #F5F1EA; font-size: 14px; }
+.reg-presa span { flex: 1; }
+
+.l-voce { color: var(--accento); font-weight: 600; opacity: 1; }
+.l-info-testo { gap: 10px; }
+.l-info-testo > span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
