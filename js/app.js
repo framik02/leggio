@@ -31,7 +31,17 @@ function mostraErrore(e) {
   radice.replaceChildren(h('main', { class: 'vista' }, h('section', { class: 'benvenuto' },
     h('h2', {}, "Qualcosa non va con l'archivio"),
     h('p', {}, String(e && e.message || e)),
-    h('button', { class: 'btn primario', onclick: () => location.reload() }, 'Ricarica'))));
+    h('p', {}, 'Di solito succede quando il browser ha cancellato una parte dei dati. Ripara toglie solo quello che non si legge più.'),
+    h('button', { class: 'btn primario', onclick: async () => {
+      try { const n = await db.ripara(); avviso(`Archivio riparato, ${n} elementi tolti`); setTimeout(() => location.reload(), 1200); }
+      catch (err) { avviso(err.message || 'Riparazione non riuscita', { durata: 6000 }); }
+    } }, "Ripara l'archivio"),
+    h('button', { class: 'btn', onclick: () => location.reload() }, 'Ricarica'),
+    h('button', { class: 'btn pericolo', onclick: async () => {
+      if (!(await conferma('Ricominciare da zero?', 'Libri, note e voci su questo telefono vengono cancellati. Se hai una copia completa la puoi ripristinare dopo.', 'Cancella tutto'))) return;
+      indexedDB.deleteDatabase('leggio');
+      setTimeout(() => location.reload(), 800);
+    } }, 'Ricomincia da zero'))));
 }
 
 export const installata = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -120,10 +130,15 @@ async function vistaLibreria() {
     h('button', { class: 'btn primario', onclick: () => input.click() }, icona('piu', 18), 'Importa un libro')) : null;
 
   const avvisoBrowser = avvisoNavigatore();
+  const nRotti = db.numeroRotti();
+  const avvisoRotti = nRotti ? h('div', { class: 'avviso-browser' },
+    h('strong', {}, `${nRotti} elementi dell'archivio non si leggono più.`),
+    h('p', {}, 'Il browser ha cancellato una parte dei dati. Toglili per rimettere in ordine la libreria.'),
+    h('button', { class: 'btn', onclick: async () => { const n = await db.ripara(); avviso(`${n} elementi tolti`); vistaLibreria(); } }, 'Togli gli elementi rovinati')) : null;
 
   const fab = h('button', { class: 'fab', 'aria-label': 'Importa libri', onclick: () => input.click() }, icona('piu', 26));
 
-  radice.replaceChildren(h('main', { class: 'vista libreria' }, testa, avvisoBrowser, continua, vuota,
+  radice.replaceChildren(h('main', { class: 'vista libreria' }, testa, avvisoBrowser, avvisoRotti, continua, vuota,
     libri.length ? h('div', { class: 'strumenti' }, h('div', { class: 'cerca-riga' }, cercaCampo, selOrdine), filtri) : null,
     libri.length ? griglia : null, input), libri.length ? fab : null, schede(''));
   disegnaGriglia();
@@ -325,7 +340,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.3.1')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.3.2')),
   schede('impostazioni'));
 }
 
@@ -335,7 +350,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 if (installata()) chiediPersistenza();
 import('./audio.js').then(m => m.avviaControlli(l => {
-  avviso(`Audio: ${l.scaricati.length} di ${l.capitoli.length} capitoli pronti`);
+  if (l) avviso(`Audio: ${l.scaricati.length} di ${l.capitoli.length} capitoli pronti`);
   if (!location.hash.startsWith('#/libro')) instrada().catch(mostraErrore);
 }));
 instrada().catch(mostraErrore);

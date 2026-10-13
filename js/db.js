@@ -71,9 +71,35 @@ function daBytes(v) {
   return o;
 }
 
+// Se il browser ha cancellato i file legati a un record (copertine, audio,
+// originali), quel record non si legge più e fa fallire la lettura in blocco.
+// Allora si legge un record alla volta, si saltano quelli rotti e li si annota.
+export const rotti = {};
+async function leggiTutti(negozio, range, indice) {
+  const sorgente = t => indice ? t.objectStore(negozio).index(indice) : t.objectStore(negozio);
+  try {
+    return daBytes(await tx([negozio], 'readonly', t => rich(sorgente(t).getAll(range))));
+  } catch (e) {
+    console.warn('lettura in blocco fallita, provo uno per uno:', negozio, e);
+    const chiavi = await tx([negozio], 'readonly', t => rich(sorgente(t).getAllKeys(range)));
+    const out = [];
+    for (const k of chiavi) {
+      try { out.push(daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).get(k))))); }
+      catch { (rotti[negozio] ||= new Set()).add(JSON.stringify(k)); }
+    }
+    return out;
+  }
+}
+
 export const db = {
   async get(negozio, chiave) {
-    return daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).get(chiave))));
+    try {
+      return daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).get(chiave))));
+    } catch (e) {
+      (rotti[negozio] ||= new Set()).add(JSON.stringify(chiave));
+      console.warn('record illeggibile', negozio, chiave, e);
+      return undefined;
+    }
   },
   async put(negozio, valore, chiave) {
     valore = await aBytes(valore);
@@ -85,21 +111,19 @@ export const db = {
     return tx([negozio], 'readwrite', t => rich(t.objectStore(negozio).delete(chiave)));
   },
   async tutti(negozio) {
-    return daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).getAll())));
+    return leggiTutti(negozio);
   },
   async coppie(negozio) {
-    return tx([negozio], 'readonly', async t => {
-      const s = t.objectStore(negozio);
-      const [k, v] = await Promise.all([rich(s.getAllKeys()), rich(s.getAll())]);
-      return k.map((x, i) => [x, daBytes(v[i])]);
-    });
+    const chiavi = await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).getAllKeys()));
+    const out = [];
+    for (const k of chiavi) { const v = await this.get(negozio, k); if (v !== undefined) out.push([k, v]); }
+    return out;
   },
   async perIndice(negozio, indice, valore) {
-    return daBytes(await tx([negozio], 'readonly', t => rich(t.objectStore(negozio).index(indice).getAll(valore))));
+    return leggiTutti(negozio, valore, indice);
   },
   async capitoli(libro) {
-    const r = IDBKeyRange.bound([libro, 0], [libro, Infinity]);
-    return tx(['capitoli'], 'readonly', t => rich(t.objectStore('capitoli').getAll(r)));
+    return leggiTutti('capitoli', IDBKeyRange.bound([libro, 0], [libro, Infinity]));
   },
 
   // Salva un libro appena importato in una sola transazione.
@@ -129,11 +153,29 @@ export const db = {
 
   async audioLibro(libro) {
     const r = IDBKeyRange.bound([libro, 0], [libro, Infinity]);
-    return daBytes(await tx(['audio'], 'readonly', t => rich(t.objectStore('audio').getAll(r))));
+    return leggiTutti('audio', r);
   },
   async cancellaAudio(libro) {
     return tx(['audio'], 'readwrite', t => rich(t.objectStore('audio').delete(IDBKeyRange.bound([libro, 0], [libro, Infinity]))));
   },
+
+  // Passa tutto l'archivio, poi toglie i record che non si leggono più.
+  async ripara() {
+    for (const n of ['libri', 'capitoli', 'risorse', 'originali', 'evidenziati', 'impostazioni', 'diario', 'audio', 'lavori', 'voci']) await leggiTutti(n);
+    let tolti = 0;
+    for (const [n, chiavi] of Object.entries(rotti)) {
+      for (const k of chiavi) { try { await this.del(n, JSON.parse(k)); tolti++; } catch (e) { console.warn(e); } }
+      delete rotti[n];
+    }
+    // Capitoli e file di libri che non esistono più.
+    const libri = new Set((await leggiTutti('libri')).map(l => l.id));
+    for (const n of ['capitoli', 'risorse', 'originali', 'audio']) {
+      const chiavi = await tx([n], 'readonly', t => rich(t.objectStore(n).getAllKeys()));
+      for (const k of chiavi) { const l = Array.isArray(k) ? k[0] : k; if (!libri.has(l)) { await this.del(n, k); tolti++; } }
+    }
+    return tolti;
+  },
+  numeroRotti() { return Object.values(rotti).reduce((s, x) => s + x.size, 0); },
 
   async risorsa(libro, percorso) {
     return this.get('risorse', [libro, percorso]);
