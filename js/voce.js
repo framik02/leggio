@@ -9,7 +9,7 @@ function caricaVoci() {
 }
 if ('speechSynthesis' in window) {
   caricaVoci();
-  speechSynthesis.addEventListener?.('voiceschanged', caricaVoci);
+  window.speechSynthesis?.addEventListener?.('voiceschanged', caricaVoci);
 }
 
 export function disponibile() { return 'speechSynthesis' in window; }
@@ -38,11 +38,11 @@ export async function trovaVoce(lingua, nome) {
 }
 
 export function prova(voce, testo, velocita = 1) {
-  speechSynthesis.cancel();
+  window.speechSynthesis?.cancel();
   const u = new SpeechSynthesisUtterance(testo);
   if (voce) { u.voice = voce; u.lang = voce.lang; }
   u.rate = velocita;
-  speechSynthesis.speak(u);
+  window.speechSynthesis?.speak(u);
 }
 
 // Applica le regole di pronuncia imparate.
@@ -164,7 +164,7 @@ export class Lettore {
     this.attivo = false;
     this._gen++;
     clearTimeout(this._timer); clearTimeout(this._guardia);
-    speechSynthesis.cancel();
+    window.speechSynthesis?.cancel();
     this.onStato(false);
   }
 
@@ -174,7 +174,7 @@ export class Lettore {
   _parla() {
     const gen = ++this._gen;
     clearTimeout(this._timer); clearTimeout(this._guardia);
-    speechSynthesis.cancel();
+    window.speechSynthesis?.cancel();
     const f = this.frasi[this.indice];
     if (!f) { this.attivo = false; this.onStato(false); this.onFine(); return; }
     this.onFrase(f);
@@ -205,7 +205,7 @@ export class Lettore {
     // Su iOS a volte onend non arriva: una guardia calcolata sulla lunghezza.
     const attesa = (testo.length / (14 * u.rate)) * 1000 * 2.2 + 4000;
     this._guardia = setTimeout(fine, attesa);
-    speechSynthesis.speak(u);
+    window.speechSynthesis?.speak(u);
   }
 
   _prossima(gen, pausa) {

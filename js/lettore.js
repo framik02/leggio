@@ -24,6 +24,11 @@ const PAROLE_PAGINA = 275;
 export async function apriLettore(radice, id, esci) {
   const libro = await db.get('libri', id);
   if (!libro) { esci(); return; }
+  // Copia istantanea in localStorage: regge anche se l'app viene chiusa di colpo.
+  try {
+    const veloce = JSON.parse(localStorage.getItem(`leggio-pos-${id}`) || 'null');
+    if (veloce && veloce.t > (libro.posizione?.t || 0)) libro.posizione = veloce;
+  } catch { /* niente */ }
   libro.aperto = Date.now();
   if (libro.stato === 'da-leggere') libro.stato = 'in-lettura';
   await db.put('libri', libro);
@@ -121,11 +126,18 @@ export async function apriLettore(radice, id, esci) {
         : h('div', { class: 'l-fine' }, h('div', { class: 'l-fine-segno' }, '❧'), h('p', {}, 'Fine del libro'),
           h('button', { class: 'btn', onclick: async () => { libro.stato = 'finito'; await db.put('libri', libro); avviso('Segnato come finito'); } }, 'Segna come finito')));
     if (n > 0) pagina.prepend(h('button', { class: 'l-precedente', onclick: () => caricaCapitolo(n - 1, Infinity) }, icona('indietro', 16), libro.capitoli[n - 1].titolo));
-    requestAnimationFrame(() => {
+    const posiziona = () => {
       if (frase === Infinity) scorri.scrollTop = scorri.scrollHeight;
-      else if (frase > 0) vaiAFrase(frase, false);
+      else if (frase > 0) vaiAFrase(frase, false, true);
       else scorri.scrollTop = 0;
-      salvaPosizione();
+    };
+    ripristino = true;
+    requestAnimationFrame(posiziona);
+    // Caratteri e immagini cambiano l'altezza del testo: si riposiziona quando sono pronti.
+    const attese = [document.fonts?.ready, ...[...pagina.querySelectorAll('img')].map(i => i.complete ? null : new Promise(ok => { i.onload = i.onerror = ok; }))].filter(Boolean);
+    Promise.race([Promise.all(attese), new Promise(ok => setTimeout(ok, 1500))]).then(() => {
+      if (ripristino) requestAnimationFrame(posiziona);
+      setTimeout(() => { ripristino = false; salvaPosizione(); }, 120);
     });
     aggiornaSegno();
   }
@@ -213,11 +225,12 @@ export async function apriLettore(radice, id, esci) {
 
   function spanDi(idFrase) { return pagina.querySelector(`span.s[data-s="${idFrase}"]`); }
 
-  function vaiAFrase(idFrase, morbido = true) {
+  function vaiAFrase(idFrase, morbido = true, inAlto = false) {
     const sp = spanDi(idFrase);
     if (!sp) return;
     const r = sp.getBoundingClientRect(), rs = scorri.getBoundingClientRect();
-    scorri.scrollTo({ top: scorri.scrollTop + r.top - rs.top - rs.height * 0.3, behavior: morbido ? 'smooth' : 'auto' });
+    const margine = inAlto ? 72 : rs.height * 0.3;
+    scorri.scrollTo({ top: scorri.scrollTop + r.top - rs.top - margine, behavior: morbido ? 'smooth' : 'auto' });
   }
 
   // Prima frase visibile in alto.
@@ -230,7 +243,7 @@ export async function apriLettore(radice, id, esci) {
     return 0;
   }
 
-  let tSalva = null;
+  let tSalva = null, ripristino = false;
   function salvaPosizione() {
     const frase = lettore.attivo ? frasi[lettore.indice]?.id ?? 0 : fraseInVista();
     const prima = libro.capitoli.slice(0, cap).reduce((s, c) => s + c.frasi, 0);
@@ -242,19 +255,25 @@ export async function apriLettore(radice, id, esci) {
     const vel = lettore.attivo ? PAROLE_MINUTO * 0.72 * lettore.velocita : PAROLE_MINUTO;
     infoSx.textContent = `${minuti(restanti / vel * 60)} alla fine del capitolo`;
     infoDx.textContent = infoPagina(frase) || `${Math.round(libro.progresso * 100)}%`;
+    libro.posizione.t = Date.now();
+    try { localStorage.setItem(`leggio-pos-${id}`, JSON.stringify(libro.posizione)); } catch { /* niente */ }
     clearTimeout(tSalva);
-    tSalva = setTimeout(() => db.put('libri', libro), 600);
+    tSalva = setTimeout(() => db.put('libri', libro), 250);
     aggiornaSegno();
   }
 
   // ------------------------------------------------------------ interazione
-  let ultimoScroll = 0, yPrec = 0, mosso = Date.now();
+  let ultimoScroll = 0, yPrec = 0, mosso = Date.now(), tScorri = null;
   scorri.addEventListener('scroll', () => {
     const y = scorri.scrollTop;
     if (Math.abs(y - yPrec) > 24) { el.classList.toggle('nascosto', y > yPrec && y > 80); yPrec = y; }
     mosso = Date.now();
     if (lettore.attivo && Date.now() - ultimoAuto > 900) { seguendo = false; torna.classList.add('visibile'); }
-    if (Date.now() - ultimoScroll > 250) { ultimoScroll = Date.now(); if (!lettore.attivo) salvaPosizione(); }
+    // Mentre si ripristina la posizione non si salva; poi si salva sempre l'ultimo punto.
+    if (ripristino || lettore.attivo) return;
+    if (Date.now() - ultimoScroll > 250) { ultimoScroll = Date.now(); salvaPosizione(); }
+    clearTimeout(tScorri);
+    tScorri = setTimeout(salvaPosizione, 180);
   }, { passive: true });
 
   const selezione = creaSelezione({
@@ -419,7 +438,7 @@ export async function apriLettore(radice, id, esci) {
     selbar.replaceChildren(
       h('div', { class: 'sb-riga' },
         ...['giallo', 'ciano', 'lilla'].map(c => h('button', { class: `mf-colore c-${c} ${es?.colore === c ? 'attivo' : ''}`, 'aria-label': `Evidenzia ${c}`, onclick: () => salvaEvidenza(c) })),
-        es ? h('button', { class: 'mf-togli', onclick: () => togliEvidenza(es) }, 'Togli') : h('span', { class: 'sb-suggerimento' }, 'Trascina le maniglie per allungare o accorciare'),
+        es ? h('button', { class: 'mf-togli', onclick: () => togliEvidenza(es) }, 'Togli') : h('span', { class: 'sb-suggerimento' }, 'Trascina i pallini per allungare o accorciare'),
         bottoneIcona('chiudi', 'Annulla', () => selezione.pulisci(), 'sb-chiudi')),
       h('div', { class: 'sb-azioni' },
         az('cuffie', 'Ascolta', () => { const da = sel.da.s; selezione.pulisci(); alternaAscolto(da); }),
@@ -582,20 +601,24 @@ export async function apriLettore(radice, id, esci) {
   }
 
   // ------------------------------------------------------------ uscita
-  function chiudi() {
+  function chiudi(torna = true) {
+    if (!attivo) return;
     attivo = false;
     document.removeEventListener('leggio-lavoro', quandoLavoro);
     sintesi.pausa();
     registrato.scarica();
     clearInterval(orologio); clearInterval(timerTick); clearTimeout(timer);
-    salvaPosizione();
+    if (!ripristino) salvaPosizione();
     db.put('libri', libro);
     urlImg.forEach(u => URL.revokeObjectURL(u));
     document.body.classList.remove('in-lettura');
     document.querySelector('meta[name=theme-color]')?.setAttribute('content', '#F6F3EE');
-    esci();
+    if (torna) esci();
   }
-  window.addEventListener('pagehide', () => { if (attivo) { salvaPosizione(); db.put('libri', libro); } });
+  // App in background o chiusa: si salva subito.
+  const salvaSubito = () => { if (!attivo) return; if (!ripristino) salvaPosizione(); clearTimeout(tSalva); db.put('libri', libro); };
+  window.addEventListener('pagehide', salvaSubito);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') salvaSubito(); });
 
   await caricaCapitolo(cap, libro.posizione?.frase || 0);
   if (sessionStorage.getItem('leggio-ascolta')) {

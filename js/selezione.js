@@ -144,20 +144,51 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
   }
   function dentroSel(pos) { return sel && confronta(sel.da, pos) <= 0 && confronta(pos, sel.a) <= 0; }
 
-  let ultimoTocco = null, attesa = null, giu = null;
+  let ultimoTocco = null, attesa = null, giu = null, maniglia = false;
+  // Pressione lunga: seleziona la parola e, senza staccare il dito, si trascina
+  // per allungare. Doppio tocco: la frase. Tocco: i comandi.
+  let trascina = null; // { ancora } mentre il dito tiene premuto dopo la pressione lunga
+  let lungoTimer = null;
   pagina.addEventListener('pointerdown', e => {
     if (e.target.closest('.maniglia, button')) return;
-    giu = { x: e.clientX, y: e.clientY, t: Date.now() };
+    giu = { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId };
+    clearTimeout(lungoTimer);
+    lungoTimer = setTimeout(() => {
+      if (!giu) return;
+      const p = parolaIn(giu.x, giu.y);
+      if (!p) return;
+      clearTimeout(attesa);
+      navigator.vibrate?.(8);
+      trascina = { ancora: p.da, fine: p.a };
+      imposta(p);
+    }, 450);
   });
+  pagina.addEventListener('pointermove', e => {
+    if (giu && !trascina && Math.hypot(e.clientX - giu.x, e.clientY - giu.y) > 10) clearTimeout(lungoTimer);
+    if (!trascina || !sel) return;
+    const c = puntoTesto(e.clientX, e.clientY);
+    const grezza = c && posDaNodo(c[0], c[1]);
+    if (!grezza) return;
+    // La selezione va dall'ancora al dito, in avanti o all'indietro.
+    if (confronta(grezza, trascina.ancora) >= 0) sel = { da: trascina.ancora, a: aggancia(grezza, 'a') };
+    else sel = { da: aggancia(grezza, 'da'), a: trascina.fine };
+    disegna();
+    const rs = scorri.getBoundingClientRect();
+    if (e.clientY > rs.bottom - 90) scorri.scrollBy(0, 12);
+    else if (e.clientY < rs.top + 90) scorri.scrollBy(0, -12);
+  });
+  // Su iPhone serve fermare lo scorrimento della pagina mentre si trascina.
+  pagina.addEventListener('touchmove', e => { if (trascina || maniglia) e.preventDefault(); }, { passive: false });
+  const fineTrascina = () => { if (trascina) { trascina = null; quandoCambia(sel); } };
+  pagina.addEventListener('pointercancel', () => { clearTimeout(lungoTimer); giu = null; fineTrascina(); });
   pagina.addEventListener('pointerup', e => {
+    clearTimeout(lungoTimer);
+    if (trascina) { giu = null; fineTrascina(); return; }
     if (!giu || e.target.closest('.maniglia, button')) { giu = null; return; }
     const fermo = Math.hypot(e.clientX - giu.x, e.clientY - giu.y) < 10;
-    const lungo = Date.now() - giu.t > 450;
     giu = null;
     if (!fermo) return;
     const x = e.clientX, y = e.clientY;
-    // Pressione lunga: la parola. Doppio tocco: la frase. Tocco: i comandi.
-    if (lungo) { clearTimeout(attesa); const p = parolaIn(x, y); if (p) { navigator.vibrate?.(8); imposta(p); } return; }
     const doppio = ultimoTocco && Date.now() - ultimoTocco.t < 320 && Math.hypot(x - ultimoTocco.x, y - ultimoTocco.y) < 30;
     ultimoTocco = { x, y, t: Date.now() };
     clearTimeout(attesa);
@@ -189,7 +220,10 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
   // Maniglie trascinabili.
   for (const [m, lato] of [[mInizio, 'da'], [mFine, 'a']]) {
     let dy = 0;
+    m.addEventListener('touchstart', e => { maniglia = true; e.stopPropagation(); }, { passive: true });
+    m.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
     m.addEventListener('pointerdown', e => {
+      maniglia = true;
       e.preventDefault(); e.stopPropagation();
       m.setPointerCapture(e.pointerId);
       const r = m.getBoundingClientRect();
@@ -210,7 +244,7 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
       if (e.clientY > rs.bottom - 90) scorri.scrollBy(0, 12);
       else if (e.clientY < rs.top + 90) scorri.scrollBy(0, -12);
     });
-    const lascia = e => { m.classList.remove('presa'); if (m.hasPointerCapture?.(e.pointerId)) m.releasePointerCapture(e.pointerId); quandoCambia(sel); };
+    const lascia = e => { maniglia = false; m.classList.remove('presa'); if (m.hasPointerCapture?.(e.pointerId)) m.releasePointerCapture(e.pointerId); quandoCambia(sel); };
     m.addEventListener('pointerup', lascia);
     m.addEventListener('pointercancel', lascia);
   }

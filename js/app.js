@@ -13,7 +13,8 @@ async function instrada() {
   // Cambiando pagina si chiudono i fogli rimasti aperti.
   document.querySelectorAll('.foglio, .foglio-sfondo').forEach(e => e.remove());
   const [, sezione, arg] = (location.hash || '#/').split('/');
-  if (lettoreAperto && sezione !== 'libro') { lettoreAperto = null; }
+  // Uscendo dal lettore in qualunque modo (anche col gesto indietro) si salva la posizione.
+  if (lettoreAperto) { lettoreAperto.chiudi(false); lettoreAperto = null; }
   if (sezione === 'libro' && arg) {
     const { apriLettore } = await import('./lettore.js');
     lettoreAperto = await apriLettore(radice, arg, () => { location.hash = '#/'; });
@@ -340,7 +341,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.4')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.4.1')),
   schede('impostazioni'));
 }
 

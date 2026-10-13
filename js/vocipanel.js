@@ -85,7 +85,7 @@ export async function apriPannelloVoci(opz) {
   async function schedaTua() {
     const mie = (await db.tutti('voci')).sort((a, b) => b.creato - a.creato);
     return [
-      h('p', { class: 'nota' }, 'Registra da uno a tre minuti di voce, su testi diversi: Kaggle la clona e legge il libro con quel timbro. Col tasto + aggiungi registrazioni a una voce che hai già, per renderla più somigliante. Registra la tua voce, o quella di chi ti ha dato il permesso.'),
+      h('p', { class: 'nota' }, 'Registra da uno a tre minuti di voce, su testi con emozioni diverse: Kaggle la clona e legge il libro con quel timbro. Col tasto + aggiungi registrazioni a una voce che hai già, per renderla più somigliante. Registra la tua voce, o quella di chi ti ha dato il permesso.'),
       mie.length ? h('div', { class: 'elenco-voci' }, mie.map(v => {
         const id = `clonata:${v.id}`;
         const url = URL.createObjectURL(v.campioni[0].blob);
@@ -229,30 +229,50 @@ const TESTI = {
   it: [
     ['Racconto', 'Il sole di settembre entrava di sbieco dalla finestra e disegnava sul pavimento un rettangolo dorato. Mi fermai a guardarlo, come si guarda una cosa che sta per finire.'],
     ['Dialogo', '«Ma davvero pensi che basti?» mi chiese, alzando appena la voce. Non risposi subito. Poi, piano, dissi che no, non bastava, ma che era tutto quello che avevamo.'],
-    ['Numeri e date', 'Il treno delle sette e un quarto partiva dal binario tre. Ventitré chilometri, tre gallerie e un ponte sul fiume: arrivavo alle otto meno dieci, il dodici di ogni mese più stanco del solito.'],
     ['Domande', 'Dove eravamo rimasti? Chi aveva chiuso la porta? E perché nessuno, in quella casa, voleva ammettere di aver sentito il telefono suonare tre volte, nel cuore della notte?'],
-    ['Esclamazioni', 'Che giornata! Avevamo vinto, finalmente! Mio fratello saltava sul divano, la radio gridava i risultati e perfino il cane, che di solito dormiva, abbaiava come un matto.'],
+    ['Allegria', 'Che giornata! Avevamo vinto, finalmente! Mio fratello saltava sul divano, la radio gridava i risultati e perfino il cane, che di solito dormiva, abbaiava come un matto.'],
+    ['Tristezza', 'Quando la casa fu vuota, rimase soltanto il segno dei quadri sulle pareti. Mia madre passò la mano sul muro, lentamente, come per salutare qualcuno che non c’era più.'],
+    ['Rabbia trattenuta', 'Non alzare la voce con me. Ti ho aspettato tre ore, sotto la pioggia, senza una telefonata. Adesso non voglio scuse: voglio solo sapere perché.'],
+    ['Paura', 'Il corridoio era buio. Sentii un rumore, poi un altro, più vicino. Trattenni il respiro e restai immobile, con la mano sulla maniglia, senza il coraggio di aprire.'],
+    ['Tenerezza', 'Dormi, piccola mia, che fuori c’è il vento ma qui siamo al caldo. Domani andiamo al mare, te lo prometto, e raccogliamo le conchiglie più belle.'],
+    ['Ironia', 'Naturalmente il treno era in orario. Così in orario che era partito dieci minuti prima, lasciandoci sulla banchina con le valigie e un’ottima occasione per fare amicizia.'],
+    ['Solenne', 'Signore e signori, in questo giorno ricordiamo chi ha costruito, con fatica e silenzio, la libertà di cui oggi godiamo. A loro va la nostra gratitudine.'],
+    ['Confidenza', 'Te lo dico sottovoce, perché non voglio che lo sappiano gli altri: quella lettera l’ho scritta io. Non l’ho mai spedita, ma ogni tanto la rileggo.'],
+    ['Numeri e date', 'Il treno delle sette e un quarto partiva dal binario tre. Ventitré chilometri, tre gallerie e un ponte: arrivavo alle otto meno dieci, il dodici di ogni mese, dal millenovecentonovantotto.'],
+    ['Cifre e percentuali', 'Nel duemilaventitré le vendite sono cresciute del quattordici virgola cinque per cento, mentre i costi sono scesi di un terzo. Un risultato che nessuno, a gennaio, si aspettava.'],
+    ['Nomi e luoghi', 'Da Bolzano a Palermo, passando per Firenze, Matera e Cagliari, Giuseppe, Chiara, Federico e Anna attraversarono l’Italia in sei settimane, su una vecchia Fiat azzurra.'],
+    ['Nomi stranieri e sigle', 'Al convegno di Berlino parlarono Jean-Paul Sartre, Virginia Woolf e Friedrich Nietzsche, almeno nei ricordi di un giornalista della RAI che aveva confuso tutti i badge.'],
     ['Descrizione', 'La cucina profumava di pane e di pioggia. Sul tavolo c’erano tre tazze sbeccate, un barattolo di miele e una lettera mai aperta, con il francobollo azzurro e l’indirizzo scritto a mano.'],
     ['Elenco', 'Prima di partire controllò tutto: il passaporto, le chiavi, il caricabatterie, due maglioni, un ombrello piccolo e, nascosto nella tasca interna, il biglietto che lei gli aveva lasciato.'],
+    ['Istruzioni', 'Per prima cosa, accendete il forno a centottanta gradi. Poi sbattete le uova con lo zucchero, aggiungete la farina un poco alla volta e mescolate con calma, senza fretta.'],
+    ['Notiziario', 'Buonasera. Apriamo con il maltempo che da questa mattina interessa il Nord: strade allagate in Liguria, scuole chiuse in tre province e treni in ritardo fino a due ore.'],
     ['Riflessione', 'Forse non esistono scelte giuste o sbagliate, pensava. Esistono soltanto scelte fatte con attenzione oppure in fretta, e la differenza, a volte, la si scopre molti anni dopo.'],
-    ['Frase lunga', 'Quando arrivammo al paese, dopo una salita che sembrava non finire mai, tra muretti a secco, ulivi storti e qualche cane che ci seguiva per curiosità, il campanile stava suonando mezzogiorno.'],
     ['Saggistica', 'Secondo gli studi più recenti, la memoria non funziona come un archivio, ma come una ricostruzione: ogni volta che ricordiamo un episodio, lo riscriviamo, e un poco lo cambiamo.'],
+    ['Poesia', 'Sera di ottobre, il cielo si fa basso, / le foglie cadono senza far rumore. / Cammino piano, e conto passo a passo / le cose che ho perduto, e il loro odore.'],
+    ['Filastrocca', 'Trentatré trentini entrarono a Trento, tutti e trentatré trotterellando. Sopra la panca la capra campa, sotto la panca la capra crepa.'],
+    ['Frase lunga', 'Quando arrivammo al paese, dopo una salita che sembrava non finire mai, tra muretti a secco, ulivi storti e qualche cane che ci seguiva per curiosità, il campanile stava suonando mezzogiorno.'],
   ],
   en: [
     ['Story', 'The September sun came in sideways through the window and drew a golden rectangle on the floor. I stopped to look at it, the way you look at something that is about to end.'],
     ['Dialogue', '"Do you really think that is enough?" she asked, barely raising her voice. I did not answer at once. Then, quietly, I said no, it was not enough, but it was all we had.'],
-    ['Numbers and dates', 'The seven fifteen train left from platform three. Fourteen miles, three tunnels and a bridge over the river: I arrived at ten to eight, on the twelfth of every month, more tired than usual.'],
     ['Questions', 'Where were we? Who had closed the door? And why did nobody in that house want to admit hearing the phone ring three times, in the middle of the night?'],
-    ['Exclamations', 'What a day! We had won, at last! My brother was jumping on the sofa, the radio was shouting the results, and even the dog, who usually slept, was barking like mad.'],
-    ['Description', 'The kitchen smelled of bread and rain. On the table there were three chipped cups, a jar of honey and a letter never opened, with a blue stamp and the address written by hand.'],
-    ['List', 'Before leaving he checked everything: the passport, the keys, the charger, two sweaters, a small umbrella and, hidden in the inner pocket, the note she had left him.'],
+    ['Joy', 'What a day! We had won, at last! My brother was jumping on the sofa, the radio was shouting the results, and even the dog, who usually slept, was barking like mad.'],
+    ['Sadness', 'When the house was empty, only the marks of the paintings remained on the walls. My mother ran her hand along the wall, slowly, as if saying goodbye to someone who was gone.'],
+    ['Restrained anger', 'Do not raise your voice with me. I waited three hours for you, in the rain, without a single call. I do not want excuses now: I just want to know why.'],
+    ['Fear', 'The corridor was dark. I heard a noise, then another, closer. I held my breath and stood still, my hand on the handle, without the courage to open the door.'],
+    ['Tenderness', 'Sleep now, little one, the wind is outside but we are warm in here. Tomorrow we will go to the sea, I promise, and pick up the most beautiful shells.'],
+    ['Irony', 'Naturally, the train was on time. So on time that it had left ten minutes early, leaving us on the platform with our suitcases and an excellent chance to make new friends.'],
+    ['Numbers and dates', 'The seven fifteen train left from platform three. Fourteen miles, three tunnels and a bridge: I arrived at ten to eight, on the twelfth of every month, since nineteen ninety-eight.'],
+    ['Names and places', 'From Edinburgh to Cornwall, by way of York, Oxford and Bath, Margaret, Oliver, Priya and Tom crossed Britain in six weeks, in an old blue Land Rover.'],
+    ['Instructions', 'First, preheat the oven to one hundred and eighty degrees. Then beat the eggs with the sugar, add the flour a little at a time, and stir slowly, without hurrying.'],
+    ['News', 'Good evening. We begin with the storms that have hit the north since this morning: flooded roads, schools closed in three counties and trains delayed by up to two hours.'],
     ['Reflection', 'Perhaps there are no right or wrong choices, he thought. There are only choices made with care or in a hurry, and sometimes you find out the difference many years later.'],
+    ['Poetry', 'October evening, and the sky hangs low, / the leaves come down without a single sound. / I walk on slowly, counting as I go / the things I lost, and where they can be found.'],
     ['Long sentence', 'When we reached the village, after a climb that seemed endless, between dry stone walls, crooked olive trees and a few dogs that followed us out of curiosity, the bell was ringing noon.'],
-    ['Non-fiction', 'According to recent studies, memory does not work like an archive but like a reconstruction: every time we recall an episode, we rewrite it, and we change it a little.'],
   ],
 };
-const OBIETTIVO = 120; // secondi per una buona somiglianza
-const MASSIMO_CAMPIONI = 12;
+const OBIETTIVO = 180; // secondi per una voce ricca di sfumature
+const MASSIMO_CAMPIONI = 20;
 
 function tipoRegistrazione() {
   for (const t of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']) {
@@ -294,9 +314,9 @@ export function registraVoce(lingua, dopo, esistente) {
     const quanti = (esistente ? esistente.campioni.length : 0) + prese.length;
     tasto.disabled = quanti >= MASSIMO_CAMPIONI;
     stato.textContent = quanti >= MASSIMO_CAMPIONI ? `Hai ${MASSIMO_CAMPIONI} registrazioni, il massimo che serve.`
-      : t < 25 ? `Hai ${Math.round(t)} secondi: ne servono almeno 25, meglio due minuti, su testi diversi.`
+      : t < 25 ? `Hai ${Math.round(t)} secondi: ne servono almeno 25, meglio tre minuti, su testi diversi.`
         : t < 60 ? `Hai ${Math.round(t)} secondi. Va già, ma con un minuto la voce somiglia di più.`
-          : t < OBIETTIVO ? `Hai ${Math.round(t)} secondi: buono. Arrivando a due minuti è ancora meglio.`
+          : t < OBIETTIVO ? `Hai ${Math.round(t)} secondi: buono. Arrivando a tre minuti, con emozioni diverse, la voce prende più sfumature.`
             : `Hai ${Math.round(t)} secondi: ottimo, bastano.`;
   };
 
@@ -349,7 +369,7 @@ export function registraVoce(lingua, dopo, esistente) {
   disegnaPrese();
   const f = foglio(esistente ? `Aggiungi a «${esistente.nome}»` : 'Registra una voce', h('div', { class: 'registra' },
     nome,
-    h('p', { class: 'nota' }, 'In un posto silenzioso, sempre alla stessa distanza, una spanna dalla bocca. Leggi con calma, come se leggessi un audiolibro, dando la giusta intonazione a domande ed esclamazioni. Tocca per iniziare e di nuovo per fermare: al massimo 45 secondi per volta.'),
+    h('p', { class: 'nota' }, 'In un posto silenzioso, sempre alla stessa distanza, una spanna dalla bocca. Leggi come un audiolibro e recita l’emozione indicata sopra il testo: allegria, tristezza, rabbia, sussurro. È così che la voce clonata impara le sfumature. Tocca per iniziare e di nuovo per fermare: al massimo 45 secondi per volta.'),
     h('div', { class: 'reg-testata' }, etichetta, altro),
     testo,
     h('div', { class: 'reg-centro' }, tasto, h('div', {}, tempo, livello)),

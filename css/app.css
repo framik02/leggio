@@ -436,3 +436,6 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 .reg-tasto:disabled { opacity: .35; }
 .nota-testo { font-size: .82em; line-height: 1.45; opacity: .75; border-top: 1px solid color-mix(in srgb, var(--l-testo, #000) 12%, transparent); padding-top: .4em; margin-top: .6em; }
 .l-pagina sup { font-size: .65em; line-height: 0; opacity: .7; }
+
+/* il pallino della maniglia non deve far scorrere la pagina */
+.maniglia, .maniglia span, .maniglia span::after { touch-action: none; -webkit-user-select: none; user-select: none; }
