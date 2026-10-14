@@ -98,7 +98,7 @@ export function descriviVoce(v) {
     const sigla = v.nome.slice(0, 2);
     return `${sigla[1] === 'f' ? 'Femminile' : 'Maschile'}, accento ${ACCENTO[sigla[0]] || ''} · veloce da creare`;
   }
-  return 'Voce da studio, espressiva · più lenta da creare';
+  return `${v.genere === 'm' ? (v.grave ? 'Maschile, grave' : 'Maschile') : 'Femminile'} · espressiva, più lenta da creare`;
 }
 
 // ---------------------------------------------------------------- lavori

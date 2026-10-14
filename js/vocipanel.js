@@ -63,11 +63,16 @@ export async function apriPannelloVoci(opz) {
   async function schedaNaturali() {
     const tutte = (await catalogo()).filter(v => v.lingue.includes(libro.lingua));
     if (!tutte.length) return [h('p', { class: 'nota' }, 'Il catalogo delle voci naturali non è ancora disponibile.')];
-    const gruppi = [['kokoro', 'Veloci', 'Pronte in pochi minuti anche per un libro intero.'], ['xtts', 'Espressive', 'Più calde e variate. Per un libro lungo servono alcune ore.']];
+    const gruppi = [
+      ['Veloci', 'Pronte in pochi minuti anche per un libro intero.', v => v.motore === 'kokoro'],
+      ['Narratori gravi', 'Voci maschili profonde, adatte a saggi e documentari. Espressive, per un libro lungo servono alcune ore.', v => v.motore === 'xtts' && v.grave],
+      ['Maschili', 'Voci da studio espressive.', v => v.motore === 'xtts' && v.genere === 'm' && !v.grave],
+      ['Femminili', 'Voci da studio espressive.', v => v.motore === 'xtts' && v.genere !== 'm'],
+    ];
     return [
       h('p', { class: 'nota' }, 'Audio vero, creato gratis su Kaggle. Si ascolta anche a schermo spento, coi controlli nella schermata di blocco.'),
-      ...gruppi.map(([m, titolo, nota]) => {
-        const voci = tutte.filter(v => v.motore === m);
+      ...gruppi.map(([titolo, nota, filtro]) => {
+        const voci = tutte.filter(filtro);
         if (!voci.length) return null;
         return h('section', { class: 'gruppo-voci' }, h('h3', {}, titolo), h('p', { class: 'nota' }, nota),
           h('div', { class: 'elenco-voci' }, voci.map(v => rigaVoce(v.id, nomeVoce(v.id), descriviVoce(v), `voci/${typeof v.file === 'string' ? v.file : v.file[libro.lingua]}`))));
