@@ -448,3 +448,7 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 .voce-foto { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: none; }
 .voce-foto-testo { font-size: 12px; color: var(--accento); font-weight: 600; }
 .voce-editor .riga-bottoni .btn { gap: 6px; }
+
+.allena { display: grid; gap: 8px; padding: 14px; border-radius: 16px; background: #F7F2EA; }
+.allena:empty { display: none; }
+.allena .nota { margin: 0; }

@@ -132,7 +132,9 @@ async function preparaCapitolo(libroId, n, imp, regole, lingua) {
 export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
   const imp = await impostazioni();
   const regole = await dizionario();
-  const motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : 'clonata';
+  let motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : 'clonata';
+  const voceClonata = motore === 'clonata' ? await db.get('voci', voceId.slice(8)) : null;
+  if (voceClonata?.allenata?.kernel) motore = 'allenata';
   const caps = [];
   for (const [i, n] of capitoli.entries()) {
     caps.push(await preparaCapitolo(libro.id, n, imp, regole, libro.lingua));
@@ -141,9 +143,10 @@ export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
   const id = `${libro.id}-${Date.now().toString(36)}`;
   const ramo = `lavoro/${id}`;
   const lavoro = { id, motore, voce: voceId, lingua: libro.lingua, opz: { dialoghiVivaci: imp.dialoghiVivaci }, titolo: libro.titolo, capitoli: caps };
+  if (motore === 'allenata') lavoro.modello = voceClonata.allenata.kernel;
   const file = [{ percorso: 'lavoro/job.json', dati: JSON.stringify(lavoro) }];
   if (motore === 'clonata') {
-    const voce = await db.get('voci', voceId.slice(8));
+    const voce = voceClonata;
     if (!voce) throw new Error('La voce registrata non c\'è più.');
     voce.campioni.forEach((c, i) => file.push({ percorso: `lavoro/campioni/c${String(i).padStart(2, '0')}.${estensione(c.blob.type, c.nomeFile)}`, dati: c.blob }));
   }
@@ -192,13 +195,17 @@ export async function aggiornaLavoro(rec) {
     await db.put('lavori', rec);
   }
   // Trascrizione degli audio della voce clonata: si conserva con la voce.
-  if (rec.motore === 'clonata' && !rec.trascritta) {
+  if ((rec.motore === 'clonata' || rec.motore === 'allena') && !rec.trascritta) {
     const t = await gh(`/contents/voce/trascrizione.json?ref=${encodeURIComponent(rec.ramo)}`, { raw: true, consenti404: true });
     if (t) {
       const voce = await db.get('voci', rec.voce.slice(8));
       if (voce) { voce.trascrizione = JSON.parse(t); await db.put('voci', voce); }
       rec.trascritta = true;
     }
+  }
+  if (rec.motore === 'allena' && rec.stato?.fase === 'finito' && rec.stato?.allenata) {
+    const voce = await db.get('voci', rec.voce.slice(8));
+    if (voce) { voce.allenata = { kernel: rec.stato.kernel, data: Date.now(), frasi: rec.stato.frasi, minuti: rec.stato.minuti }; await db.put('voci', voce); }
   }
   const fase = rec.stato?.fase;
   const tutti = rec.capitoli.every(n => rec.scaricati.includes(n));
@@ -227,8 +234,12 @@ export function descriviStato(rec) {
   switch (st.fase) {
     case 'errore': return { errore: true, testo: gpu ? 'Kaggle accetta al massimo due lavori con GPU insieme.' : 'Il lavoro si è fermato.', dettaglio: gpu ? "Aspetta che finisca l'altro, poi premi Riprendi." : (st.errore || '') };
     case 'da riprendere': return { testo: 'Kaggle si è fermato prima della fine.', dettaglio: `${pronti} di ${tot} capitoli pronti. Premi Riprendi per continuare da lì.` };
-    case 'finito': return { testo: pronti >= tot ? 'Audio pronto.' : 'Finito su Kaggle, sto scaricando.', dettaglio: `${pronti} di ${tot} capitoli sul telefono.` };
-    case 'in corso': return { testo: `Lettura in corso: ${pronti} di ${tot} capitoli pronti.`, dettaglio: `Continua anche se chiudi l'app. ${ultimo}` };
+    case 'finito': return rec.motore === 'allena'
+      ? { testo: 'Voce allenata.', dettaglio: `${st.frasi || ''} frasi, ${st.minuti || ''} minuti di voce. Da ora l’audio con questa voce usa il modello allenato.` }
+      : { testo: pronti >= tot ? 'Audio pronto.' : 'Finito su Kaggle, sto scaricando.', dettaglio: `${pronti} di ${tot} capitoli sul telefono.` };
+    case 'in corso': return rec.motore === 'allena'
+      ? { testo: 'Allenamento in corso.', dettaglio: `${st.dettaglio ? st.dettaglio[0].toUpperCase() + st.dettaglio.slice(1) + '. ' : ''}Di solito 20-60 minuti. Continua anche se chiudi l'app. ${ultimo}` }
+      : { testo: `Lettura in corso: ${pronti} di ${tot} capitoli pronti.`, dettaglio: `Continua anche se chiudi l'app. ${ultimo}` };
     case 'preparo la voce': return { testo: 'Kaggle è partito e sta preparando la voce.', dettaglio: `Di solito 5-10 minuti, poi arriva il primo capitolo. ${ultimo}` };
     case 'in coda su Kaggle': return { testo: 'In coda su Kaggle, aspetta una macchina libera.', dettaglio: `Può volerci qualche minuto, a volte di più per la GPU. Continua anche se chiudi l'app. ${ultimo}` };
     case 'carico su Kaggle': return { testo: 'Sto preparando il lavoro su Kaggle.', dettaglio: ultimo };
@@ -253,6 +264,24 @@ export async function recuperaLavori(libroId) {
     } catch (e) { console.warn('ramo non recuperato', r.name, e); }
   }
   return n;
+}
+
+// Allenamento della voce: stessi audio della clonazione, nessun libro.
+export async function allenaVoce(voce) {
+  if ((await lavoriAttivi()).some(l => l.motore === 'allena' || l.motore === 'clonata' || l.motore === 'allenata' || l.motore === 'xtts'))
+    throw new Error('C’è già un lavoro sulla GPU di Kaggle: aspetta che finisca.');
+  const id = `${voce.id}-a${Date.now().toString(36)}`;
+  const ramo = `lavoro/${id}`;
+  const file = [{ percorso: 'lavoro/job.json', dati: JSON.stringify({ id, motore: 'allena', voce: `clonata:${voce.id}`, lingua: voce.lingua || 'it', capitoli: [] }) }];
+  voce.campioni.forEach((c, i) => file.push({ percorso: `lavoro/campioni/c${String(i).padStart(2, '0')}.${estensione(c.blob.type, c.nomeFile)}`, dati: c.blob }));
+  const rec = { id, ramo, libro: null, voce: `clonata:${voce.id}`, motore: 'allena', capitoli: [], scaricati: [], creato: Date.now(), stato: { fase: 'in partenza' }, controllato: Date.now() };
+  await db.put('lavori', rec);
+  try { await creaRamo(ramo, file); await lancia(ramo); } catch (e) { await db.del('lavori', id); throw e; }
+  return rec;
+}
+
+export async function allenamentoDi(voceId) {
+  return (await db.tutti('lavori')).find(l => l.motore === 'allena' && l.voce === `clonata:${voceId}` && !l.chiuso);
 }
 
 export async function riprendi(rec) {

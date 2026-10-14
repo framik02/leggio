@@ -2,7 +2,7 @@
 import { db, impostazioni, salvaImpostazioni, nuovoId } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, conferma, minuti } from './ui.js';
 import { voci as vociTelefono, prova, etichettaQualita } from './voce.js';
-import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla, descriviStato, recuperaLavori } from './audio.js';
+import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla, descriviStato, recuperaLavori, allenaVoce, allenamentoDi } from './audio.js';
 
 let _anteprima = null;
 function ascolta(url) {
@@ -392,7 +392,7 @@ export function avatarVoce(v, dim = 44) {
 export function descriviCampioni(v) {
   const sec = v.campioni.reduce((s, c) => s + (c.durata || 0), 0);
   const durata = sec >= 90 ? `${Math.round(sec / 60)} minuti` : `${Math.round(sec)} secondi`;
-  return `${v.campioni.length} audio · ${durata}${v.trascrizione ? ' · trascritta' : ''}`;
+  return `${v.campioni.length} audio · ${durata}${v.allenata ? ' · allenata' : v.trascrizione ? ' · trascritta' : ''}`;
 }
 
 // Foto profilo: quadrata, ritagliata al centro, 256 pixel.
@@ -432,6 +432,35 @@ export async function apriVoce(esistente, lingua, dopo) {
   const sceltaAudio = h('input', { type: 'file', accept: 'audio/*,video/mp4,video/quicktime,.m4a,.mp3,.wav,.ogg,.opus,.aac,.flac', multiple: true, hidden: true });
   const elenco = h('div', { class: 'reg-prese' });
   const riepilogo = h('p', { class: 'nota' });
+  const sezAllena = h('div', { class: 'allena' });
+  let giroAllena = null;
+  const disegnaAllena = async () => {
+    if (nuova) { sezAllena.replaceChildren(); return; }
+    const sec = v.campioni.reduce((s, c) => s + (c.durata || 0), 0);
+    const lav = await allenamentoDi(v.id);
+    if (lav) {
+      try { await aggiornaLavoro(lav); } catch { /* rete */ }
+      const d = descriviStato(lav);
+      if (lav.stato?.fase === 'finito') { const agg = await db.get('voci', v.id); if (agg?.allenata) v.allenata = agg.allenata; }
+      const finito = lav.stato?.fase === 'finito';
+      sezAllena.replaceChildren(h('div', { class: `al-lavoro ${d.errore ? 'errore' : ''}` },
+        h('div', { class: 'al-titolo' }, finito || d.errore ? null : h('span', { class: 'al-pulsa' }), h('strong', {}, d.testo)),
+        d.dettaglio ? h('p', {}, d.dettaglio) : null,
+        d.errore ? h('button', { class: 'btn', onclick: async () => { await annulla(lav); disegnaAllena(); } }, 'Chiudi') : null));
+      return;
+    }
+    sezAllena.replaceChildren(
+      h('strong', {}, v.allenata ? `Voce allenata il ${new Date(v.allenata.data).toLocaleDateString('it-IT')}` : 'Allena la voce'),
+      h('p', { class: 'nota' }, v.allenata
+        ? 'L’audio con questa voce usa il modello allenato. Se aggiungi altri audio puoi allenarla di nuovo.'
+        : sec >= 600 ? 'Con 10 minuti o più di audio Kaggle può allenare il modello sulla tua voce: somiglia molto di più della clonazione al volo. Ci vogliono 20-60 minuti di GPU gratuita.'
+          : `Per allenare il modello servono almeno 10 minuti di audio; ne hai ${Math.round(sec / 60 * 10) / 10}. Importa un audio più lungo o registra ancora.`),
+      h('button', { class: `btn largo ${sec >= 600 ? 'primario' : ''}`, disabled: sec < 600, onclick: async e => {
+        e.target.disabled = true;
+        try { await salvaVoce(); await allenaVoce(v); avviso('Allenamento avviato su Kaggle'); disegnaAllena(); }
+        catch (err) { avviso(err.message, { durata: 7000 }); e.target.disabled = false; }
+      } }, v.allenata ? 'Allena di nuovo' : 'Allena la voce'));
+  };
   const salva = h('button', { class: 'btn primario largo' }, nuova ? 'Crea la voce' : 'Salva');
 
   const disegnaFoto = () => foto.replaceChildren(avatarVoce({ ...v, nome: nome.value || v.nome }, 84), h('span', { class: 'voce-foto-testo' }, v.immagine ? 'Cambia foto' : 'Aggiungi foto'));
@@ -481,6 +510,8 @@ export async function apriVoce(esistente, lingua, dopo) {
 
   disegnaFoto();
   disegnaElenco();
+  disegnaAllena();
+  giroAllena = setInterval(disegnaAllena, 30000);
   const f = foglio(nuova ? 'Nuova voce' : v.nome, h('div', { class: 'modulo voce-editor' },
     h('div', { class: 'voce-testa' }, foto, nome),
     h('div', { class: 'riga-bottoni' },
@@ -493,8 +524,9 @@ export async function apriVoce(esistente, lingua, dopo) {
     riepilogo, elenco,
     h('p', { class: 'nota' }, 'Gli audio importati vengono tagliati e trascritti su Kaggle: puoi caricare registrazioni lunghe, anche con pause. Evita musica di sottofondo e altre voci.'),
     salva,
+    sezAllena,
     nuova ? null : h('button', { class: 'btn pericolo largo', onclick: async () => {
       if (await conferma('Eliminare la voce?', `«${v.nome}» sparisce da questo telefono.`, 'Elimina')) { await db.del('voci', v.id); f.chiudi(); dopo && dopo(null); }
     } }, icona('cestino', 18), 'Elimina la voce'),
-    sceltaFoto, sceltaAudio), { alto: true });
+    sceltaFoto, sceltaAudio), { alto: true, allaChiusura: () => clearInterval(giroAllena) });
 }
