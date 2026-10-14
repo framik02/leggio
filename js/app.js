@@ -341,7 +341,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.4.1')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.5')),
   schede('impostazioni'));
 }
 

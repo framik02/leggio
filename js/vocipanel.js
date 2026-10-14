@@ -84,22 +84,18 @@ export async function apriPannelloVoci(opz) {
 
   async function schedaTua() {
     const mie = (await db.tutti('voci')).sort((a, b) => b.creato - a.creato);
+    const scegli = async v => { libro.voceAudio = `clonata:${v.id}`; await db.put('libri', libro); opz.dopoCambio && opz.dopoCambio(); disegna(); };
     return [
-      h('p', { class: 'nota' }, 'Registra da uno a tre minuti di voce, su testi con emozioni diverse: Kaggle la clona e legge il libro con quel timbro. Col tasto + aggiungi registrazioni a una voce che hai già, per renderla più somigliante. Registra la tua voce, o quella di chi ti ha dato il permesso.'),
+      h('p', { class: 'nota' }, 'Una voce si crea registrando col microfono o importando un audio, anche lungo: Kaggle lo taglia, lo trascrive e la clona. Usa la tua voce, o quella di chi ti ha dato il permesso.'),
       mie.length ? h('div', { class: 'elenco-voci' }, mie.map(v => {
         const id = `clonata:${v.id}`;
-        const url = URL.createObjectURL(v.campioni[0].blob);
         return h('div', { class: `voce-riga ${libro.voceAudio === id ? 'scelta-attiva' : ''}` },
-          h('button', { class: 'voce-nome', onclick: async () => { libro.voceAudio = id; await db.put('libri', libro); opz.dopoCambio && opz.dopoCambio(); disegna(); } },
-            h('span', { class: 'voce-testi' }, h('span', {}, v.nome), h('small', {}, `${v.campioni.length} registrazioni · ${Math.round(v.campioni.reduce((s, c) => s + c.durata, 0))} secondi`))),
-          bottoneIcona('orecchio', 'Ascolta', () => ascolta(url)),
-          bottoneIcona('piu', 'Aggiungi registrazioni', () => registraVoce(libro.lingua, () => disegna(), v)),
-          bottoneIcona('cestino', 'Elimina', async () => { if (await conferma('Eliminare la voce?', `«${v.nome}» sparisce da questo telefono.`, 'Elimina')) { await db.del('voci', v.id); disegna(); } }, 'piccola'));
+          h('button', { class: 'voce-nome', onclick: () => scegli(v) },
+            avatarVoce(v),
+            h('span', { class: 'voce-testi' }, h('span', {}, v.nome), h('small', {}, descriviCampioni(v)))),
+          bottoneIcona('matita', 'Modifica', () => apriVoce(v, libro.lingua, () => disegna())));
       })) : null,
-      h('button', { class: 'btn largo', onclick: () => registraVoce(libro.lingua, async v => {
-        if (v) { libro.voceAudio = `clonata:${v.id}`; await db.put('libri', libro); opz.dopoCambio && opz.dopoCambio(); }
-        disegna();
-      }) }, icona('voce', 18), 'Registra una voce'),
+      h('button', { class: 'btn largo', onclick: () => apriVoce(null, libro.lingua, async v => { if (v) await scegli(v); else disegna(); }) }, icona('piu', 18), 'Nuova voce'),
     ];
   }
 
@@ -272,7 +268,7 @@ const TESTI = {
   ],
 };
 const OBIETTIVO = 180; // secondi per una voce ricca di sfumature
-const MASSIMO_CAMPIONI = 20;
+const MASSIMO_CAMPIONI = 60;
 
 function tipoRegistrazione() {
   for (const t of ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']) {
@@ -282,7 +278,7 @@ function tipoRegistrazione() {
 }
 
 // esistente: una voce già salvata a cui aggiungere registrazioni.
-export function registraVoce(lingua, dopo, esistente) {
+export function registraVoce(lingua, dopo, esistente, daEditor = false) {
   const testi = TESTI[lingua] || TESTI.it;
   const prese = [];
   const giaFatti = esistente ? esistente.campioni.reduce((s, c) => s + c.durata, 0) : 0;
@@ -375,4 +371,125 @@ export function registraVoce(lingua, dopo, esistente) {
     h('div', { class: 'reg-centro' }, tasto, h('div', {}, tempo, livello)),
     barra, stato, elenco, salva),
   { alto: true, allaChiusura: () => { try { if (reg && reg.state === 'recording') reg.stop(); flusso && flusso.getTracks().forEach(t => t.stop()); } catch { /* niente */ } } });
+}
+
+// ---------------------------------------------------------------- le mie voci
+const TINTE_VOCE = ['#B4532A', '#2F5D50', '#4B3F72', '#1F3A5F', '#8A6A2F', '#6B2D3C'];
+export function avatarVoce(v, dim = 44) {
+  if (v.immagine) {
+    const u = URL.createObjectURL(v.immagine);
+    return h('img', { class: 'avatar', src: u, alt: '', style: { width: `${dim}px`, height: `${dim}px` } });
+  }
+  let x = 0; for (const c of v.nome || '?') x = (x * 31 + c.charCodeAt(0)) >>> 0;
+  return h('span', { class: 'avatar', style: { width: `${dim}px`, height: `${dim}px`, background: TINTE_VOCE[x % TINTE_VOCE.length], fontSize: `${dim * 0.42}px` } }, (v.nome || '?').trim().charAt(0).toUpperCase());
+}
+
+export function descriviCampioni(v) {
+  const sec = v.campioni.reduce((s, c) => s + (c.durata || 0), 0);
+  const durata = sec >= 90 ? `${Math.round(sec / 60)} minuti` : `${Math.round(sec)} secondi`;
+  return `${v.campioni.length} audio · ${durata}${v.trascrizione ? ' · trascritta' : ''}`;
+}
+
+// Foto profilo: quadrata, ritagliata al centro, 256 pixel.
+async function preparaImmagine(file) {
+  const bmp = await createImageBitmap(file);
+  const lato = Math.min(bmp.width, bmp.height);
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  c.getContext('2d').drawImage(bmp, (bmp.width - lato) / 2, (bmp.height - lato) / 2, lato, lato, 0, 0, 256, 256);
+  return new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.86));
+}
+
+function durataAudio(blob) {
+  return new Promise(ok => {
+    const a = new Audio();
+    const u = URL.createObjectURL(blob);
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => {
+      // Alcuni file dicono Infinity finché non si cerca la fine.
+      if (a.duration === Infinity) { a.currentTime = 1e9; a.ontimeupdate = () => { a.ontimeupdate = null; ok(a.duration); URL.revokeObjectURL(u); }; }
+      else { ok(a.duration || 0); URL.revokeObjectURL(u); }
+    };
+    a.onerror = () => { ok(0); URL.revokeObjectURL(u); };
+    a.src = u;
+  });
+}
+
+const MAX_MB_FILE = 60;
+
+// Editor di una voce: nome, foto, registrazioni e audio importati.
+export async function apriVoce(esistente, lingua, dopo) {
+  const v = esistente ? { ...esistente, campioni: [...esistente.campioni] } : { id: nuovoId(), nome: '', lingua, creato: Date.now(), campioni: [] };
+  const nuova = !esistente;
+  const nome = h('input', { class: 'campo', placeholder: 'Nome della voce', value: v.nome });
+  const foto = h('button', { class: 'voce-foto', 'aria-label': 'Cambia immagine' });
+  const sceltaFoto = h('input', { type: 'file', accept: 'image/*', hidden: true });
+  const sceltaAudio = h('input', { type: 'file', accept: 'audio/*,video/mp4,video/quicktime,.m4a,.mp3,.wav,.ogg,.opus,.aac,.flac', multiple: true, hidden: true });
+  const elenco = h('div', { class: 'reg-prese' });
+  const riepilogo = h('p', { class: 'nota' });
+  const salva = h('button', { class: 'btn primario largo' }, nuova ? 'Crea la voce' : 'Salva');
+
+  const disegnaFoto = () => foto.replaceChildren(avatarVoce({ ...v, nome: nome.value || v.nome }, 84), h('span', { class: 'voce-foto-testo' }, v.immagine ? 'Cambia foto' : 'Aggiungi foto'));
+  const disegnaElenco = () => {
+    elenco.replaceChildren(...v.campioni.map((c, i) => h('div', { class: 'reg-presa' },
+      h('span', {}, c.nomeFile ? `${c.nomeFile} · ${Math.round((c.durata || 0) / 60 * 10) / 10} min` : `Registrazione ${i + 1} · ${Math.round(c.durata || 0)} s`),
+      bottoneIcona('play', 'Ascolta', () => ascolta(URL.createObjectURL(c.blob)), 'piccola'),
+      bottoneIcona('cestino', 'Togli', () => { v.campioni.splice(i, 1); disegnaElenco(); }, 'piccola'))));
+    const sec = v.campioni.reduce((s, c) => s + (c.durata || 0), 0);
+    riepilogo.textContent = !v.campioni.length ? 'Ancora nessun audio. Registra col microfono o importa un file: un memo vocale, un mp3, anche di mezz’ora.'
+      : sec < 60 ? `Hai ${Math.round(sec)} secondi di voce: ne servono almeno 25, meglio qualche minuto.`
+        : `Hai ${Math.round(sec / 60 * 10) / 10} minuti di voce. ${sec < 600 ? 'Per la clonazione bastano; dai 10 minuti in su si potrà anche allenare il modello.' : 'Abbastanza anche per allenare il modello sulla tua voce.'}`;
+    salva.disabled = !v.campioni.length && !nuova;
+  };
+
+  foto.addEventListener('click', () => sceltaFoto.click());
+  sceltaFoto.addEventListener('change', async () => {
+    const f = sceltaFoto.files[0];
+    if (!f) return;
+    try { v.immagine = await preparaImmagine(f); disegnaFoto(); } catch { avviso('Immagine non leggibile'); }
+  });
+  nome.addEventListener('input', () => { if (!v.immagine) disegnaFoto(); });
+  sceltaAudio.addEventListener('change', async () => {
+    for (const f of sceltaAudio.files) {
+      if (f.size > MAX_MB_FILE * 1048576) { avviso(`${f.name} supera ${MAX_MB_FILE} MB: taglialo in più parti`, { durata: 6000 }); continue; }
+      const blob = new Blob([await f.arrayBuffer()], { type: f.type || 'audio/mp4' });
+      const durata = await durataAudio(blob);
+      v.campioni.push({ blob, tipo: blob.type, durata, nomeFile: f.name, importato: true });
+    }
+    sceltaAudio.value = '';
+    disegnaElenco();
+  });
+
+  const salvaVoce = async () => {
+    v.nome = nome.value.trim() || v.nome || 'La mia voce';
+    v.campioni = v.campioni.slice(0, MASSIMO_CAMPIONI);
+    await db.put('voci', v);
+    return v;
+  };
+  salva.addEventListener('click', async () => {
+    if (nuova && !v.campioni.length) { avviso('Aggiungi almeno un audio: registra o importa un file.'); return; }
+    await salvaVoce();
+    f.chiudi();
+    avviso(nuova ? 'Voce creata. Ora crea l’audio del libro.' : 'Voce salvata');
+    dopo && dopo(v);
+  });
+
+  disegnaFoto();
+  disegnaElenco();
+  const f = foglio(nuova ? 'Nuova voce' : v.nome, h('div', { class: 'modulo voce-editor' },
+    h('div', { class: 'voce-testa' }, foto, nome),
+    h('div', { class: 'riga-bottoni' },
+      h('button', { class: 'btn', onclick: async () => {
+        v.nome = nome.value.trim() || v.nome || 'La mia voce';
+        f.chiudi();
+        registraVoce(lingua, async nuovaV => { await apriVoce(nuovaV || v, lingua, dopo); }, v, true);
+      } }, icona('voce', 18), 'Registra'),
+      h('button', { class: 'btn', onclick: () => sceltaAudio.click() }, icona('piu', 18), 'Importa audio')),
+    riepilogo, elenco,
+    h('p', { class: 'nota' }, 'Gli audio importati vengono tagliati e trascritti su Kaggle: puoi caricare registrazioni lunghe, anche con pause. Evita musica di sottofondo e altre voci.'),
+    salva,
+    nuova ? null : h('button', { class: 'btn pericolo largo', onclick: async () => {
+      if (await conferma('Eliminare la voce?', `«${v.nome}» sparisce da questo telefono.`, 'Elimina')) { await db.del('voci', v.id); f.chiudi(); dopo && dopo(null); }
+    } }, icona('cestino', 18), 'Elimina la voce'),
+    sceltaFoto, sceltaAudio), { alto: true });
 }

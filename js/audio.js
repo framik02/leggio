@@ -145,7 +145,7 @@ export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
   if (motore === 'clonata') {
     const voce = await db.get('voci', voceId.slice(8));
     if (!voce) throw new Error('La voce registrata non c\'è più.');
-    voce.campioni.forEach((c, i) => file.push({ percorso: `lavoro/campioni/c${i}.${estensione(c.blob.type)}`, dati: c.blob }));
+    voce.campioni.forEach((c, i) => file.push({ percorso: `lavoro/campioni/c${String(i).padStart(2, '0')}.${estensione(c.blob.type, c.nomeFile)}`, dati: c.blob }));
   }
   avanzamento && avanzamento(0.7);
   // Il lavoro si registra sul telefono prima di partire: se qualcosa va storto
@@ -164,7 +164,11 @@ export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
   return rec;
 }
 
-function estensione(tipo) {
+function estensione(tipo, nome) {
+  const daNome = (nome || '').match(/\.([a-z0-9]{2,5})$/i);
+  if (daNome) return daNome[1].toLowerCase();
+  if (/mpeg|mp3/.test(tipo)) return 'mp3';
+  if (/flac/.test(tipo)) return 'flac';
   if (/mp4|m4a|aac/.test(tipo)) return 'm4a';
   if (/webm/.test(tipo)) return 'webm';
   if (/ogg/.test(tipo)) return 'ogg';
@@ -186,6 +190,15 @@ export async function aggiornaLavoro(rec) {
     await db.put('audio', { libro: rec.libro, n, blob: new Blob([await blob.arrayBuffer()], { type: 'audio/mpeg' }), tempi: tempi.frasi, durata: tempi.durata, voce: rec.voce, data: Date.now() });
     rec.scaricati.push(n);
     await db.put('lavori', rec);
+  }
+  // Trascrizione degli audio della voce clonata: si conserva con la voce.
+  if (rec.motore === 'clonata' && !rec.trascritta) {
+    const t = await gh(`/contents/voce/trascrizione.json?ref=${encodeURIComponent(rec.ramo)}`, { raw: true, consenti404: true });
+    if (t) {
+      const voce = await db.get('voci', rec.voce.slice(8));
+      if (voce) { voce.trascrizione = JSON.parse(t); await db.put('voci', voce); }
+      rec.trascritta = true;
+    }
   }
   const fase = rec.stato?.fase;
   const tutti = rec.capitoli.every(n => rec.scaricati.includes(n));
