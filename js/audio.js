@@ -270,7 +270,7 @@ export function descriviStato(rec) {
       : { testo: pronti >= tot ? 'Audio pronto.' : 'Finito su Kaggle, sto scaricando.', dettaglio: `${pronti} di ${tot} capitoli sul telefono.` };
     case 'in corso': return rec.motore === 'allena'
       ? { testo: 'Allenamento in corso.', dettaglio: `${st.dettaglio ? st.dettaglio[0].toUpperCase() + st.dettaglio.slice(1) + '. ' : ''}Di solito 20-60 minuti. Continua anche se chiudi l'app. ${ultimo}` }
-      : { testo: `Lettura in corso: ${pronti} di ${tot} capitoli pronti.`, dettaglio: `Continua anche se chiudi l'app. ${ultimo}` };
+      : { testo: `Lettura in corso: ${pronti} di ${tot} capitoli pronti.`, dettaglio: `${st.dettaglio ? st.dettaglio[0].toUpperCase() + st.dettaglio.slice(1) + '. ' : ''}Continua anche se chiudi l'app. ${ultimo}` };
     case 'preparo la voce': return { testo: 'Kaggle è partito e sta preparando la voce.', dettaglio: `Di solito 5-10 minuti, poi arriva il primo capitolo. ${ultimo}` };
     case 'in coda su Kaggle': return { testo: 'In coda su Kaggle, aspetta una macchina libera.', dettaglio: `Può volerci qualche minuto, a volte di più per la GPU. Continua anche se chiudi l'app. ${ultimo}` };
     case 'carico su Kaggle': return { testo: 'Sto preparando il lavoro su Kaggle.', dettaglio: ultimo };
