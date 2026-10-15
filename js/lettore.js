@@ -57,8 +57,35 @@ export async function apriLettore(radice, id, esci) {
   }
   const registrato = ripreso ? ripreso.registrato : new LettoreAudio();
   registrato.velocita = sintesi.velocita;
+  registrato.saltaPause = !!imp.saltaPause;
   let lettore = ripreso ? ripreso.lettore : sintesi;
   let vociMie = await db.tutti('voci');
+
+  // Modalità auto e passeggiata: tasti enormi, solo l'essenziale.
+  function modalitaAuto() {
+    const titolo = h('div', { class: 'auto-titolo' });
+    const sotto = h('div', { class: 'auto-cap' });
+    const play = h('button', { class: 'auto-play', 'aria-label': 'Ascolta o pausa', onclick: () => alternaAscolto() });
+    const disegna = () => {
+      titolo.textContent = libro.titolo;
+      sotto.textContent = libro.capitoli[cap]?.titolo || '';
+      play.replaceChildren(icona(lettore.attivo ? 'pausa' : 'play', 64));
+    };
+    const indietro15 = () => lettore === registrato ? registrato.salta(-15) : lettore.indietro();
+    const avanti15 = () => lettore === registrato ? registrato.salta(15) : lettore.avanti();
+    const strato = h('div', { class: 'auto' },
+      h('button', { class: 'auto-chiudi', 'aria-label': 'Chiudi', onclick: () => { clearInterval(t); strato.remove(); } }, icona('chiudi', 30)),
+      h('div', { class: 'auto-testa' }, titolo, sotto),
+      play,
+      h('div', { class: 'auto-riga' },
+        h('button', { class: 'auto-tasto', onclick: async () => { await saltaCapitolo(-1); disegna(); } }, h('span', {}, '⏮'), h('small', {}, 'Capitolo')),
+        h('button', { class: 'auto-tasto', onclick: indietro15 }, h('span', {}, lettore === registrato ? '−15' : '‹'), h('small', {}, lettore === registrato ? 'secondi' : 'Frase')),
+        h('button', { class: 'auto-tasto', onclick: avanti15 }, h('span', {}, lettore === registrato ? '+15' : '›'), h('small', {}, lettore === registrato ? 'secondi' : 'Frase')),
+        h('button', { class: 'auto-tasto', onclick: async () => { await saltaCapitolo(1); disegna(); } }, h('span', {}, '⏭'), h('small', {}, 'Capitolo'))));
+    el.appendChild(strato);
+    disegna();
+    const t = setInterval(disegna, 700);
+  }
 
   function frecciaCap(bottone, passo) { pressioneLunga(bottone, () => saltaCapitolo(passo)); return bottone; }
   async function saltaCapitolo(passo) {
@@ -79,6 +106,7 @@ export async function apriLettore(radice, id, esci) {
     bottoneIcona('indietro', 'Libreria', () => chiudi()),
     titoloCap,
     btnSegno,
+    bottoneIcona('auto', 'Modalità auto', () => modalitaAuto()),
     bottoneIcona('lista', 'Indice', () => apriIndice()),
     bottoneIcona('testo', 'Aspetto', () => apriAspetto()));
   const pagina = h('article', { class: 'l-pagina', lang: libro.lingua });
@@ -142,7 +170,7 @@ export async function apriLettore(radice, id, esci) {
         ? h('button', { class: 'l-prossimo', onclick: () => caricaCapitolo(n + 1) },
           h('span', { class: 'occhio' }, 'Capitolo successivo'), h('span', {}, libro.capitoli[n + 1].titolo), icona('avanti'))
         : h('div', { class: 'l-fine' }, h('div', { class: 'l-fine-segno' }, '❧'), h('p', {}, 'Fine del libro'),
-          h('button', { class: 'btn', onclick: async () => { libro.stato = 'finito'; await db.put('libri', libro); avviso('Segnato come finito'); } }, 'Segna come finito')));
+          h('button', { class: 'btn', onclick: async () => { libro.stato = 'finito'; libro.finito = Date.now(); await db.put('libri', libro); avviso('Segnato come finito'); } }, 'Segna come finito')));
     if (n > 0) pagina.prepend(h('button', { class: 'l-precedente', onclick: () => caricaCapitolo(n - 1, Infinity) }, icona('indietro', 16), libro.capitoli[n - 1].titolo));
     const posiziona = () => {
       if (frase === Infinity) scorri.scrollTop = scorri.scrollHeight;
@@ -331,6 +359,14 @@ export async function apriLettore(radice, id, esci) {
   };
   sintesi.onFine = registrato.onFine = async () => {
     if (timerFineCap) { timerFineCap = false; aggiornaTimer(); return; }
+    if (cap >= libro.capitoli.length - 1) {
+      // Fine del libro: si segna finito e si passa al prossimo in coda.
+      libro.stato = 'finito'; libro.finito = Date.now(); await db.put('libri', libro);
+      const { prossimoInCoda } = await import('./ascolto.js');
+      const dopo = await prossimoInCoda(id);
+      if (dopo) { avviso(`Ora: ${dopo.titolo}`); sessionStorage.setItem('leggio-ascolta', '1'); location.hash = `#/libro/${dopo.id}`; }
+      return;
+    }
     if (cap < libro.capitoli.length - 1) {
       await caricaCapitolo(cap + 1);
       // L'audio creato riparte subito, anche a schermo spento.
@@ -467,6 +503,7 @@ export async function apriLettore(radice, id, esci) {
           selezione.pulisci();
         }),
         az('segno', 'Segna', async () => { await segnaFrase(sel.da.s, selezione.testo()); selezione.pulisci(); }),
+        selezione.testo().split(/\s+/).length <= 3 ? az('cerca', 'Significato', async () => { const t = selezione.testo(); selezione.pulisci(); (await import('./extra.js')).apriSignificato(t, libro.lingua); }) : null,
         az('voce', 'Pronuncia', () => correggiPronuncia(selezione.testo()))));
   }
 
@@ -497,6 +534,17 @@ export async function apriLettore(radice, id, esci) {
     evidenziati = evidenziati.filter(x => x !== e);
     selezione.pulisci();
     disegnaEvidenziati();
+  }
+
+  // Legge un testo qualunque con la voce del telefono (il riassunto).
+  function leggiTesto(testo) {
+    if (!window.speechSynthesis) { avviso('Sintesi vocale non disponibile'); return; }
+    lettore.pausa();
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(testo);
+    if (sintesi.voce) { u.voice = sintesi.voce; u.lang = sintesi.voce.lang; }
+    u.rate = sintesi.velocita;
+    speechSynthesis.speak(u);
   }
 
   function nota(esistente, salva) {
@@ -553,6 +601,7 @@ export async function apriLettore(radice, id, esci) {
         numero.addEventListener('keydown', e => { if (e.key === 'Enter') vai(); });
         contenuto.replaceChildren(
           h('div', { class: 'vai-pagina' }, numero, h('button', { class: 'btn', onclick: vai }, 'Vai')),
+          h('button', { class: 'btn largo riassunto-btn', onclick: async () => { f.chiudi(); (await import('./extra.js')).apriRiassunto(libro, cap, lettore.attivo ? (frasi[lettore.indice]?.id ?? fraseInVista()) : fraseInVista(), testo => leggiTesto(testo)); } }, 'Dove eravamo rimasti'),
           h('ol', { class: 'capitoli' }, libro.capitoli.map((c, i) => {
             const p = paginaInizio(i);
             return h('li', {}, h('button', { class: i === cap ? 'attuale' : '', onclick: async () => { f.chiudi(); const era = lettore.attivo; lettore.pausa(); await caricaCapitolo(i); if (era) lettore.play(0); } },

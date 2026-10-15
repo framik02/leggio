@@ -332,11 +332,29 @@ export async function lavoriAttivi(libro) {
   return tutti.filter(l => !l.chiuso && (!libro || l.libro === libro));
 }
 
+// Libri in coda con una voce scelta: l'audio si prepara in anticipo, uno alla volta.
+const SERVIZIO = /^(note|notes|endnotes|bibliografia|bibliography|indice( analitico| dei nomi)?|index|colophon|copyright|crediti|frontespizio)$/i;
+async function preparaCoda() {
+  if ((await lavoriAttivi()).length) return;
+  let ids = [];
+  try { ids = JSON.parse(localStorage.getItem('leggio-coda') || '[]'); } catch { return; }
+  for (const id of ids) {
+    const libro = await db.get('libri', id);
+    if (!libro?.voceAudio || libro.voceAudio.startsWith('clonata:') && !(await db.get('voci', libro.voceAudio.slice(8)))) continue;
+    const pronti = new Set((await db.audioLibro(id)).map(a => a.n));
+    const mancano = libro.capitoli.map((c, i) => i).filter(i => !pronti.has(i) && !SERVIZIO.test((libro.capitoli[i].titolo || '').trim()));
+    if (!mancano.length) continue;
+    await creaLavoro(libro, libro.voceAudio, mancano);
+    return;
+  }
+}
+
 let _giro = null;
 export function avviaControlli(quandoCambia) {
   let recuperato = 0;
   const giro = async () => {
     if (document.visibilityState !== 'visible' || !(await configurato())) return;
+    try { await preparaCoda(); } catch (e) { console.warn('coda', e); }
     if (Date.now() - recuperato > 10 * 60000) { recuperato = Date.now(); try { if (await recuperaLavori()) quandoCambia && quandoCambia(null); } catch (e) { console.warn(e); } }
     for (const l of await lavoriAttivi()) {
       const prima = l.scaricati.length + (l.stato?.fase || '');
@@ -412,6 +430,12 @@ export class LettoreAudio {
 
   _segui() {
     const t = this.audio.currentTime;
+    // Salto delle pause: fra la fine di una frase e l'inizio della successiva si va avanti.
+    if (this.saltaPause && this.attivo && this.tempi.length) {
+      const k = this.tempi.findIndex(x => x[2] <= t && t < x[2] + 3);
+      const dopo = k >= 0 ? this.tempi[k + 1] : null;
+      if (dopo && dopo[1] - t > 0.12) { this.audio.currentTime = dopo[1] - 0.04; return; }
+    }
     let lo = 0, hi = this.tempi.length - 1, trovato = -1;
     while (lo <= hi) { const m = (lo + hi) >> 1; if (this.tempi[m][1] <= t + 0.05) { trovato = m; lo = m + 1; } else hi = m - 1; }
     if (trovato < 0) return;

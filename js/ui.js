@@ -45,6 +45,7 @@ const P = {
   copia: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0014.5 4h-9A1.5 1.5 0 004 5.5v9A1.5 1.5 0 005.5 16H8"/>',
   orecchio: '<path d="M7 9a5 5 0 0110 0c0 3-3 4-3 6.5a2.5 2.5 0 01-5 0M10 9.5a2 2 0 014 0"/>',
   spunta: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  auto: '<path d="M5 15l1.6-5A2 2 0 018.5 8.6h7a2 2 0 011.9 1.4L19 15"/><rect x="3.5" y="14.5" width="17" height="4.5" rx="1.5"/><circle cx="7.5" cy="16.8" r=".9" fill="currentColor"/><circle cx="16.5" cy="16.8" r=".9" fill="currentColor"/>',
 };
 
 export function icona(nome, dim = 22) {

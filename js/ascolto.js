@@ -83,6 +83,7 @@ export async function capitolo(passo, daSolo = false) {
   const l = s.libro;
   if (!l) return;
   const n = s.cap + passo;
+  if (n >= l.capitoli.length && daSolo) { await libroSuccessivo(); return; }
   if (n < 0 || n >= l.capitoli.length) { if (daSolo) ferma(); return; }
   const suonava = daSolo || s.lettore?.attivo;
   s.lettore?.pausa();
@@ -109,5 +110,40 @@ export function ferma() {
   s.lettore?.pausa();
   db.put('libri', s.libro);
   s.libro = null;
+  avvisa();
+}
+
+// ---------------------------------------------------------------- coda di ascolto
+function leggiCoda() { try { return JSON.parse(localStorage.getItem('leggio-coda') || '[]'); } catch { return []; } }
+function scriviCoda(c) { try { localStorage.setItem('leggio-coda', JSON.stringify(c)); } catch { /* niente */ } }
+export function coda() { return leggiCoda(); }
+export function inCoda(id) { return leggiCoda().includes(id); }
+export function aggiungiCoda(id) { const c = leggiCoda().filter(x => x !== id); c.push(id); scriviCoda(c); }
+export function togliCoda(id) { scriviCoda(leggiCoda().filter(x => x !== id)); }
+
+// Libro finito: esce dalla coda e si restituisce il prossimo.
+export async function prossimoInCoda(finito) {
+  const c = leggiCoda().filter(x => x !== finito);
+  scriviCoda(c);
+  for (const id of c) { const l = await db.get('libri', id); if (l) return l; }
+  return null;
+}
+
+// In sottofondo: finito un libro si apre il prossimo della coda dove era rimasto.
+async function libroSuccessivo() {
+  const finito = s.libro;
+  finito.stato = 'finito'; finito.finito = Date.now();
+  await db.put('libri', finito);
+  const dopo = await prossimoInCoda(finito.id);
+  if (!dopo) { ferma(); return; }
+  s.libro = dopo;
+  const n = dopo.posizione?.cap || 0;
+  if (!(await carica(n))) { ferma(); return; }
+  salva();
+  comandiBlocco();
+  if (s.lettore === s.registrato || document.visibilityState === 'visible') {
+    const r = s.lettore.play(0);
+    if (r && r.catch) r.catch(() => avvisa());
+  }
   avvisa();
 }

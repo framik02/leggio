@@ -80,7 +80,7 @@ async function vistaLibreria() {
 
   const minOggi = Math.floor(secOggi / 60);
   const pct = Math.min(1, minOggi / (imp.obiettivo || 20));
-  const anello = h('div', { class: 'anello', title: `Obiettivo ${imp.obiettivo} minuti`, style: { '--p': pct } },
+  const anello = h('button', { class: 'anello', title: `Obiettivo ${imp.obiettivo} minuti: tocca per le statistiche`, style: { '--p': pct }, onclick: async () => (await import('./extra.js')).apriStatistiche() },
     h('span', {}, `${minOggi}`), h('small', {}, 'min'));
 
   const testa = h('header', { class: 'lib-testa' },
@@ -163,6 +163,10 @@ function avvisoNavigatore() {
       : "Safari e l'icona sulla schermata Home tengono due librerie separate. Aggiungi Leggio alla Home (Condividi › Aggiungi alla schermata Home) e usa sempre l'icona."));
 }
 
+function codaEtichetta(id) {
+  try { return (JSON.parse(localStorage.getItem('leggio-coda') || '[]')).includes(id) ? 'Togli dalla coda' : 'Metti in coda'; } catch { return 'Metti in coda'; }
+}
+
 function formatoBreve(l) { return (l.formato || '').toUpperCase(); }
 
 async function importaFile(files) {
@@ -198,7 +202,19 @@ function schedaLibro(l) {
       h('div', { class: 'segmenti' }, Object.entries(lingue).map(([k, v]) =>
         h('button', { class: l.lingua === k ? 'attivo' : '', onclick: async e => { l.lingua = k; await db.put('libri', l); e.target.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('attivo', b === e.target)); } }, v))),
       h('div', { class: 'segmenti' }, [['da-leggere', 'Da leggere'], ['in-lettura', 'In lettura'], ['finito', 'Finito']].map(([k, v]) =>
-        h('button', { class: l.stato === k ? 'attivo' : '', onclick: async e => { l.stato = k; await db.put('libri', l); e.target.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('attivo', b === e.target)); } }, v)))),
+        h('button', { class: l.stato === k ? 'attivo' : '', onclick: async e => { l.stato = k; if (k === 'finito') l.finito = Date.now(); await db.put('libri', l); e.target.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('attivo', b === e.target)); } }, v)))),
+    h('h3', { class: 'sl-sezione' }, 'Evidenziati e note'),
+    h('div', { class: 'riga-bottoni' },
+      h('button', { class: 'btn', onclick: () => lavora(async () => (await import('./extra.js')).esportaEvidenziatiMd(l), 'Preparo le note…') }, 'Markdown'),
+      h('button', { class: 'btn', onclick: () => lavora(async () => { await (await import('./extra.js')).stampaEvidenziati(l); return null; }, 'Impagino le note…') }, 'PDF')),
+    h('h3', { class: 'sl-sezione' }, 'Ascolto e copertina'),
+    h('div', { class: 'riga-bottoni' },
+      h('button', { class: 'btn', onclick: async e => {
+        const { inCoda, aggiungiCoda, togliCoda } = await import('./ascolto.js');
+        if (inCoda(l.id)) { togliCoda(l.id); e.target.textContent = 'Metti in coda'; avviso('Tolto dalla coda'); }
+        else { aggiungiCoda(l.id); e.target.textContent = 'Togli dalla coda'; avviso('In coda: parte quando finisce il libro che stai ascoltando'); }
+      } }, codaEtichetta(l.id)),
+      h('button', { class: 'btn', onclick: async () => { f.chiudi(); (await import('./extra.js')).cercaCopertina(l, () => vistaLibreria()); } }, 'Cerca copertina')),
     h('h3', { class: 'sl-sezione' }, 'Converti ed esporta'),
     h('div', { class: 'sl-esporta' },
       h('button', { class: 'btn', onclick: () => lavora(() => esportaEpub(l), 'Preparo l\'EPUB…') }, 'EPUB'),
@@ -339,7 +355,8 @@ async function vistaImpostazioni() {
       toggle('dialoghiVivaci', 'Dialoghi più vivaci'),
       numero('pausaParagrafo', 'Pausa fra paragrafi', 0, 1200, 50, 'ms'),
       numero('pausaScena', 'Pausa ai cambi di scena', 300, 3000, 100, 'ms'),
-      toggle('segui', 'Il testo segue la voce')),
+      toggle('segui', 'Il testo segue la voce'),
+      toggle('saltaPause', 'Salta le pause nell’audio creato (ascolto più rapido)')),
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Pronunce imparate'), sezDiz),
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Obiettivo'),
       numero('obiettivo', 'Minuti al giorno', 5, 120, 5, 'min')),
@@ -347,7 +364,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.8')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.9')),
   schede('impostazioni'));
 }
 
