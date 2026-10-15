@@ -2,7 +2,7 @@
 import { db, impostazioni, salvaImpostazioni, nuovoId } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, conferma, minuti } from './ui.js';
 import { voci as vociTelefono, prova, etichettaQualita } from './voce.js';
-import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla, descriviStato, recuperaLavori, allenaVoce, allenamentoDi } from './audio.js';
+import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla, descriviStato, recuperaLavori, allenaVoce, allenamentoDi, vociKaggle, preferenzeRvc, salvaPreferenzeRvc } from './audio.js';
 
 let _anteprima = null;
 function ascolta(url) {
@@ -15,7 +15,7 @@ function ascolta(url) {
 // opz: { libro, cap, voceTelefono, scegliTelefono(v), dopoCambio() }
 export async function apriPannelloVoci(opz) {
   const { libro } = opz;
-  let scheda = libro.voceAudio ? (libro.voceAudio.startsWith('clonata:') ? 'tua' : 'naturali') : 'telefono';
+  let scheda = libro.voceAudio ? (/^(clonata|rvc):/.test(libro.voceAudio) ? 'tua' : 'naturali') : 'telefono';
   const corpo = h('div', { class: 'voci' });
   let giro = null;
   const ascoltaLavoro = () => disegnaAudioLibro();
@@ -101,7 +101,46 @@ export async function apriPannelloVoci(opz) {
           bottoneIcona('matita', 'Modifica', () => apriVoce(v, libro.lingua, () => disegna())));
       })) : null,
       h('button', { class: 'btn largo', onclick: () => apriVoce(null, libro.lingua, async v => { if (v) await scegli(v); else disegna(); }) }, icona('piu', 18), 'Nuova voce'),
+      ...(await sezioneKaggle()),
     ];
+  }
+
+  // Voci già pronte su Kaggle (modelli RVC): una voce base legge, RVC dà il timbro.
+  async function sezioneKaggle() {
+    const elenco = await vociKaggle();
+    if (!elenco.length) return [];
+    return [
+      h('h3', { class: 'sl-sezione' }, 'Voci su Kaggle'),
+      h('div', { class: 'elenco-voci' }, elenco.map(v => h('div', { class: `voce-riga ${libro.voceAudio === v.id ? 'scelta-attiva' : ''}` },
+        h('button', { class: 'voce-nome', onclick: async () => { libro.voceAudio = v.id; await db.put('libri', libro); opz.dopoCambio && opz.dopoCambio(); disegna(); } },
+          avatarVoce({ nome: v.nome }),
+          h('span', { class: 'voce-testi' }, h('span', {}, v.nome), h('small', {}, 'Modello RVC · la legge una voce base, poi prende il tuo timbro'))),
+        bottoneIcona('ingranaggio', 'Regola', () => regolaRvc(v))))),
+    ];
+  }
+
+  async function regolaRvc(v) {
+    const pref = await preferenzeRvc(v.id);
+    const lingua = libro.lingua;
+    const basi = (await catalogo()).filter(x => x.motore === 'kokoro' && x.lingue.includes(lingua));
+    let base = pref.base?.[lingua] || v.base?.[lingua] || basi[0]?.id;
+    let tono = pref.tono ?? v.tono ?? 0;
+    const valore = h('span', { class: 'imp-num' }, `${tono > 0 ? '+' : ''}${tono}`);
+    const cursore = h('input', { type: 'range', min: -12, max: 12, step: 1, value: tono, oninput: e => { tono = +e.target.value; valore.textContent = `${tono > 0 ? '+' : ''}${tono}`; } });
+    const scelte = h('div', { class: 'elenco-voci' });
+    const disegnaBasi = () => scelte.replaceChildren(...basi.map(b => h('div', { class: `voce-riga ${b.id === base ? 'scelta-attiva' : ''}` },
+      h('button', { class: 'voce-nome', onclick: () => { base = b.id; disegnaBasi(); } }, h('span', { class: 'voce-testi' }, h('span', {}, nomeVoce(b.id)), h('small', {}, descriviVoce(b)))),
+      bottoneIcona('orecchio', 'Ascolta', () => ascolta(`voci/${typeof b.file === 'string' ? b.file : b.file[lingua]}`)))));
+    disegnaBasi();
+    const f = foglio(v.nome, h('div', { class: 'modulo' },
+      h('p', { class: 'nota' }, 'La voce base legge il testo con il suo ritmo e la sua intonazione, poi RVC la trasforma nel tuo timbro. Scegli una base vicina alla tua voce: maschile se la tua è maschile, femminile se è femminile.'),
+      h('h3', { class: 'sl-sezione' }, 'Voce base'), scelte,
+      h('label', { class: 'asp-cursore' }, h('span', {}, 'Tono in semitoni ', valore), cursore),
+      h('p', { class: 'nota' }, 'Se il risultato suona troppo acuto abbassa il tono, se suona troppo grave alzalo. Fra voce maschile e femminile ci sono circa 12 semitoni.'),
+      h('button', { class: 'btn primario largo', onclick: async () => {
+        await salvaPreferenzeRvc(v.id, { base: { ...(pref.base || {}), [lingua]: base }, tono });
+        f.chiudi(); avviso('Regolazioni salvate: valgono dal prossimo audio');
+      } }, 'Salva')));
   }
 
   async function disegnaAudioLibro() {

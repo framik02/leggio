@@ -1,5 +1,5 @@
 // Tiene l'app disponibile anche senza rete. Cambiare VERSIONE a ogni rilascio.
-const VERSIONE = 'leggio-0.6.0';
+const VERSIONE = 'leggio-0.7.0';
 const FILE = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/db.js', 'js/ui.js', 'js/voce.js', 'js/libri.js', 'js/lettore.js', 'js/audio.js', 'js/vocipanel.js', 'js/copia.js', 'js/selezione.js',

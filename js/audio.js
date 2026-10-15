@@ -75,6 +75,29 @@ async function lancia(ramo, azione = 'avvia') {
   await gh('/actions/workflows/lettura.yml/dispatches', { method: 'POST', body: JSON.stringify({ ref: 'main', inputs: { lavoro: ramo, azione } }) });
 }
 
+// ---------------------------------------------------------------- voci su Kaggle (RVC)
+// L'elenco sta nel repository privato: modelli RVC caricati come dataset Kaggle.
+let _vociKaggle = null;
+export async function vociKaggle(aggiorna = false) {
+  if (_vociKaggle && !aggiorna) return _vociKaggle;
+  try {
+    if (await configurato()) {
+      const t = await gh('/contents/voci-kaggle.json', { raw: true, consenti404: true });
+      if (t) { _vociKaggle = JSON.parse(t); await salvaImpostazioni({ vociKaggle: _vociKaggle }); return _vociKaggle; }
+    }
+  } catch (e) { console.warn('voci su Kaggle', e); }
+  _vociKaggle = (await impostazioni()).vociKaggle || [];
+  return _vociKaggle;
+}
+export async function preferenzeRvc(id) {
+  return ((await impostazioni()).rvcPref || {})[id] || {};
+}
+export async function salvaPreferenzeRvc(id, pref) {
+  const tutte = (await impostazioni()).rvcPref || {};
+  tutte[id] = { ...(tutte[id] || {}), ...pref };
+  await salvaImpostazioni({ rvcPref: tutte });
+}
+
 // ---------------------------------------------------------------- catalogo
 let _catalogo = null;
 export async function catalogo() {
@@ -86,6 +109,7 @@ export async function catalogo() {
 const ACCENTO = { a: 'americano', b: 'britannico', i: 'italiano' };
 export function nomeVoce(id, voci = []) {
   if (!id) return 'Voce del telefono';
+  if (id.startsWith('rvc:')) return (_vociKaggle || []).find(v => v.id === id)?.nome || 'La mia voce (RVC)';
   if (id.startsWith('clonata:')) return voci.find(v => v.id === id.slice(8))?.nome || 'La tua voce';
   if (id.startsWith('kokoro:')) {
     const v = id.slice(7);
@@ -132,7 +156,7 @@ async function preparaCapitolo(libroId, n, imp, regole, lingua) {
 export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
   const imp = await impostazioni();
   const regole = await dizionario();
-  let motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : 'clonata';
+  let motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : voceId.startsWith('rvc:') ? 'rvc' : 'clonata';
   const voceClonata = motore === 'clonata' ? await db.get('voci', voceId.slice(8)) : null;
   if (voceClonata?.allenata?.kernel) motore = 'allenata';
   const caps = [];
@@ -144,6 +168,13 @@ export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
   const ramo = `lavoro/${id}`;
   const lavoro = { id, motore, voce: voceId, lingua: libro.lingua, opz: { dialoghiVivaci: imp.dialoghiVivaci }, titolo: libro.titolo, capitoli: caps };
   if (motore === 'allenata') lavoro.modello = voceClonata.allenata.kernel;
+  if (motore === 'rvc') {
+    const conf = (await vociKaggle()).find(v => v.id === voceId);
+    if (!conf) throw new Error('La voce RVC non è più nell’elenco su GitHub.');
+    const pref = await preferenzeRvc(voceId);
+    lavoro.rvc = { dataset: conf.dataset, pth: conf.pth, index: conf.index, versione: conf.versione || 'v2', indice: conf.indice ?? 0.75,
+      base: pref.base?.[libro.lingua] || conf.base?.[libro.lingua] || conf.base?.it, tono: pref.tono ?? conf.tono ?? 0 };
+  }
   const file = [{ percorso: 'lavoro/job.json', dati: JSON.stringify(lavoro) }];
   if (motore === 'clonata') {
     const voce = voceClonata;
