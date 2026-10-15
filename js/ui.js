@@ -138,6 +138,6 @@ export function pressioneLunga(el, fn, ms = 450) {
   });
   el.addEventListener('pointermove', e => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) { clearTimeout(t); t = null; } });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, () => { clearTimeout(t); t = null; }));
-  el.addEventListener('click', e => { if (scattato) { e.stopPropagation(); e.preventDefault(); scattato = false; } }, true);
+  el.addEventListener('click', e => { if (scattato) { e.stopImmediatePropagation(); e.preventDefault(); scattato = false; } }, true);
   el.addEventListener('contextmenu', e => e.preventDefault());
 }

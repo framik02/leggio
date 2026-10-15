@@ -15,6 +15,12 @@ async function instrada() {
   const [, sezione, arg] = (location.hash || '#/').split('/');
   // Uscendo dal lettore in qualunque modo (anche col gesto indietro) si salva la posizione.
   if (lettoreAperto) { lettoreAperto.chiudi(false); lettoreAperto = null; }
+  // Ultima pagina aperta: alla prossima apertura dell'app si torna lì.
+  // Se si esce da un libro lasciando la voce accesa, l'ultima pagina resta il libro.
+  try {
+    const { stato } = await import('./ascolto.js');
+    if (sezione === 'libro' || !stato()) localStorage.setItem('leggio-ultima', location.hash || '#/');
+  } catch { /* niente */ }
   if (sezione === 'libro' && arg) {
     const { apriLettore } = await import('./lettore.js');
     lettoreAperto = await apriLettore(radice, arg, () => { location.hash = '#/'; });
@@ -341,7 +347,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.7')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.8')),
   schede('impostazioni'));
 }
 
@@ -350,6 +356,35 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 if (installata()) chiediPersistenza();
+
+// All'apertura si torna dove si era rimasti nell'ultima sessione.
+if (!location.hash || location.hash === '#/') {
+  try {
+    const ultima = localStorage.getItem('leggio-ultima');
+    if (ultima && ultima.startsWith('#/libro/')) history.replaceState(null, '', ultima);
+  } catch { /* niente */ }
+}
+
+// Mini-barra dell'ascolto in sottofondo, sopra le schede.
+import('./ascolto.js').then(({ seguiAscolto, stato, alterna, ferma }) => {
+  const barra = h('div', { class: 'mini' });
+  document.body.appendChild(barra);
+  let url = null;
+  const disegna = x => {
+    barra.classList.toggle('visibile', !!x);
+    if (!x) { barra.replaceChildren(); return; }
+    if (url) URL.revokeObjectURL(url);
+    url = x.copertina ? URL.createObjectURL(x.copertina) : null;
+    barra.replaceChildren(
+      h('a', { class: 'mini-apri', href: `#/libro/${x.libro}` },
+        url ? h('img', { src: url, alt: '' }) : h('span', { class: 'mini-segno' }, icona('cuffie', 18)),
+        h('span', { class: 'mini-testi' }, h('strong', {}, x.titolo), h('small', {}, x.capitolo))),
+      h('button', { class: 'mini-play', 'aria-label': x.attivo ? 'Pausa' : 'Ascolta', onclick: () => alterna() }, icona(x.attivo ? 'pausa' : 'play', 22)),
+      bottoneIcona('chiudi', 'Ferma l’ascolto', () => { ferma(); try { localStorage.removeItem('leggio-ascoltava'); } catch { /* niente */ } }, 'piccola'));
+  };
+  seguiAscolto(disegna);
+  disegna(stato());
+});
 import('./audio.js').then(m => m.avviaControlli(l => {
   if (l) avviso(`Audio: ${l.scaricati.length} di ${l.capitoli.length} capitoli pronti`);
   if (!location.hash.startsWith('#/libro')) instrada().catch(mostraErrore);

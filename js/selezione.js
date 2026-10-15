@@ -4,14 +4,16 @@
 // cambiano carattere, corpo o margini.
 import { h } from './ui.js';
 
-const API = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight !== 'undefined';
-const COLORI = ['giallo', 'ciano', 'lilla'];
+// Gli evidenziati sono rettangoli disegnati in un livello sopra il testo, in
+// modalità moltiplica: Safari non dipinge la CSS Highlight API su testo con
+// user-select: none, che qui serve ai gesti.
 
 export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
   let sel = null; // { da, a, esistente }
   let evidenze = [];
   const mInizio = h('div', { class: 'maniglia inizio' }, h('span'));
   const mFine = h('div', { class: 'maniglia fine' }, h('span'));
+  const strato = h('div', { class: 'ev-strato', 'aria-hidden': 'true' });
 
   // ------------------------------------------------------------ posizioni
   const spans = s => pagina.querySelectorAll(`span.s[data-s="${s}"]`);
@@ -97,26 +99,31 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
   }
 
   // ------------------------------------------------------------ disegno
-  function disegna() {
-    if (API) {
-      for (const k of [...COLORI.map(c => `ev-${c}`), 'ev-nota', 'sel']) CSS.highlights.delete(k);
-      const gruppi = {};
-      for (const e of evidenze) {
-        const r = range(e.da, e.a);
-        if (!r) continue;
-        (gruppi[`ev-${e.colore}`] ||= []).push(r);
-        if (e.nota) (gruppi['ev-nota'] ||= []).push(r.cloneRange());
-      }
-      for (const [k, rr] of Object.entries(gruppi)) CSS.highlights.set(k, new Highlight(...rr));
-      if (sel) { const r = range(sel.da, sel.a); if (r) CSS.highlights.set('sel', new Highlight(r)); }
-    } else {
-      // Browser vecchi: si colora la frase intera.
-      pagina.querySelectorAll('span.s.ev, span.s.scelta').forEach(s => s.classList.remove('ev', 'ev-giallo', 'ev-ciano', 'ev-lilla', 'ev-nota', 'scelta'));
-      for (const e of evidenze) for (let s = e.da.s; s <= e.a.s; s++) spans(s).forEach(sp => sp.classList.add('ev', `ev-${e.colore}`, ...(e.nota ? ['ev-nota'] : [])));
-      if (sel) for (let s = sel.da.s; s <= sel.a.s; s++) spans(s).forEach(sp => sp.classList.add('scelta'));
+  function rettangoli(r, classe, base) {
+    const fuori = [];
+    for (const q of r.getClientRects()) {
+      if (q.width < 1 || q.height < 1) continue;
+      fuori.push(h('div', { class: classe, style: { left: `${q.left - base.left}px`, top: `${q.top - base.top}px`, width: `${q.width}px`, height: `${q.height}px` } }));
     }
+    return fuori;
+  }
+
+  function disegna() {
+    const base = pagina.getBoundingClientRect();
+    const pezzi = [];
+    for (const e of evidenze) {
+      const r = range(e.da, e.a);
+      if (!r) continue;
+      pezzi.push(...rettangoli(r, `ev-rett c-${e.colore || 'giallo'}${e.nota ? ' con-nota' : ''}`, base));
+    }
+    if (sel) { const r = range(sel.da, sel.a); if (r) pezzi.push(...rettangoli(r, 'ev-rett selezione', base)); }
+    strato.replaceChildren(...pezzi);
+    if (!strato.isConnected) pagina.append(strato);
     posizionaManiglie();
   }
+  // Cambiano carattere, corpo, margini o arrivano le immagini: si ridisegna.
+  let attesaRidisegno = null;
+  new ResizeObserver(() => { cancelAnimationFrame(attesaRidisegno); attesaRidisegno = requestAnimationFrame(disegna); }).observe(pagina);
 
   function posizionaManiglie() {
     if (!sel) { mInizio.remove(); mFine.remove(); return; }
@@ -193,7 +200,14 @@ export function creaSelezione({ pagina, scorri, quandoCambia, toccoVuoto }) {
     ultimoTocco = { x, y, t: Date.now() };
     clearTimeout(attesa);
     if (doppio) { ultimoTocco = null; doppioTocco(x, y); return; }
-    attesa = setTimeout(() => { if (sel) imposta(null); else toccoVuoto(); }, 300);
+    // La frase in lettura si guarda adesso: fra 300 ms la voce potrebbe essere già oltre.
+    const inVoce = document.elementFromPoint(x, y)?.closest?.('span.s.in-voce');
+    attesa = setTimeout(() => {
+      if (sel) { imposta(null); return; }
+      // Mentre la voce legge, toccare la frase in lettura la seleziona: si evidenzia o si salva.
+      if (inVoce) { navigator.vibrate?.(8); imposta(frase(+inVoce.dataset.s)); return; }
+      toccoVuoto();
+    }, 300);
   });
   pagina.addEventListener('contextmenu', e => e.preventDefault());
 

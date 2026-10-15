@@ -385,6 +385,9 @@ export class LettoreAudio {
   }
 
   carica(registro) {
+    const chiave = `${registro.libro}:${registro.n}:${registro.data || ''}`;
+    if (this.chiave === chiave && this.url) { this.tempi = registro.tempi; return; }
+    this.chiave = chiave;
     if (this.url) URL.revokeObjectURL(this.url);
     this.url = URL.createObjectURL(registro.blob);
     this.audio.src = this.url;
@@ -459,6 +462,7 @@ export class LettoreAudio {
   set velocitaAudio(v) { this.velocita = v; this.audio.playbackRate = v; }
 
   scarica() {
+    this.chiave = null;
     this.pausa();
     this.audio.onended = null; this.audio.ontimeupdate = null;
   }

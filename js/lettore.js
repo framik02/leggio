@@ -3,6 +3,7 @@ import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, aggiu
 import { h, icona, bottoneIcona, foglio, avviso, minuti, pressioneLunga } from './ui.js';
 import { LettoreAudio, nomeVoce, lavoriAttivi } from './audio.js';
 import { creaSelezione } from './selezione.js';
+import { inCorsoPer, prendi, restituisci } from './ascolto.js';
 import { Lettore, frasiDalCapitolo, voci, trovaVoce, prova, etichettaQualita, applicaDizionario, disponibile } from './voce.js';
 
 const TEMI = {
@@ -42,17 +43,34 @@ export async function apriLettore(radice, id, esci) {
   let attivo = true;
 
   // Due motori: la voce del telefono e l'audio creato, che va anche a schermo spento.
-  const sintesi = new Lettore();
-  sintesi.lingua = libro.lingua;
-  sintesi.libro = id;
-  sintesi.regole = regole;
-  sintesi.velocita = libro.velocita || imp.velocita;
-  sintesi.opz = { pausaParagrafo: imp.pausaParagrafo, pausaScena: imp.pausaScena, dialoghiVivaci: imp.dialoghiVivaci };
-  trovaVoce(libro.lingua, libro.voce || imp[`voce_${libro.lingua}`]).then(v => { sintesi.voce = v; });
-  const registrato = new LettoreAudio();
+  // Se il libro si stava ascoltando fuori dal lettore, si riprendono quelli.
+  const ripreso = inCorsoPer(id) ? restituisci() : null;
+  if (ripreso) { cap = ripreso.cap; libro.posizione = { cap: ripreso.cap, frase: ripreso.frase, t: Date.now() }; }
+  const sintesi = ripreso ? ripreso.sintesi : new Lettore();
+  if (!ripreso) {
+    sintesi.lingua = libro.lingua;
+    sintesi.libro = id;
+    sintesi.regole = regole;
+    sintesi.velocita = libro.velocita || imp.velocita;
+    sintesi.opz = { pausaParagrafo: imp.pausaParagrafo, pausaScena: imp.pausaScena, dialoghiVivaci: imp.dialoghiVivaci };
+    trovaVoce(libro.lingua, libro.voce || imp[`voce_${libro.lingua}`]).then(v => { sintesi.voce = v; });
+  }
+  const registrato = ripreso ? ripreso.registrato : new LettoreAudio();
   registrato.velocita = sintesi.velocita;
-  let lettore = sintesi;
+  let lettore = ripreso ? ripreso.lettore : sintesi;
   let vociMie = await db.tutti('voci');
+
+  function frecciaCap(bottone, passo) { pressioneLunga(bottone, () => saltaCapitolo(passo)); return bottone; }
+  async function saltaCapitolo(passo) {
+    const n = cap + passo;
+    if (n < 0 || n >= libro.capitoli.length) { avviso(passo > 0 ? 'È l’ultimo capitolo' : 'È il primo capitolo'); return; }
+    navigator.vibrate?.(10);
+    const suonava = lettore.attivo;
+    lettore.pausa();
+    await caricaCapitolo(n);
+    avviso(`${passo > 0 ? 'Capitolo successivo' : 'Capitolo precedente'}: ${libro.capitoli[n].titolo}`);
+    if (suonava) { const r = lettore.play(0); if (r && r.catch) r.catch(() => {}); }
+  }
 
   // ------------------------------------------------------------ struttura
   const titoloCap = h('div', { class: 'l-titolo' });
@@ -78,9 +96,9 @@ export async function apriLettore(radice, id, esci) {
   const btnVoce = h('button', { class: 'p-chip', 'aria-label': 'Voce', onclick: () => apriVoci() }, icona('voce', 18));
   const player = h('div', { class: 'l-player' },
     chipVel,
-    bottoneIcona('indietroFrase', 'Frase precedente', () => lettore.indietro()),
+    frecciaCap(bottoneIcona('indietroFrase', 'Frase precedente; tieni premuto per il capitolo precedente', () => lettore.indietro()), -1),
     btnPlay,
-    bottoneIcona('avantiFrase', 'Frase successiva', () => lettore.avanti()),
+    frecciaCap(bottoneIcona('avantiFrase', 'Frase successiva; tieni premuto per il capitolo successivo', () => lettore.avanti()), 1),
     h('div', { class: 'p-dx' }, chipTimer, btnVoce));
   const torna = h('button', { class: 'l-torna', onclick: () => segui(true) }, 'Torna alla voce');
 
@@ -328,8 +346,8 @@ export async function apriLettore(radice, id, esci) {
       navigator.mediaSession.setActionHandler('seekto', d => { if (lettore === registrato && d.seekTime != null) { registrato.audio.currentTime = d.seekTime; registrato._segui(); } });
     } catch { /* non tutti i browser li hanno */ }
     navigator.mediaSession.setActionHandler('pause', () => lettore.pausa());
-    navigator.mediaSession.setActionHandler('nexttrack', () => lettore.avanti());
-    navigator.mediaSession.setActionHandler('previoustrack', () => lettore.indietro());
+    navigator.mediaSession.setActionHandler('nexttrack', () => saltaCapitolo(1));
+    navigator.mediaSession.setActionHandler('previoustrack', () => saltaCapitolo(-1));
   }
 
   function alternaAscolto(daFrase) {
@@ -448,7 +466,16 @@ export async function apriLettore(radice, id, esci) {
           try { await navigator.clipboard.writeText(`«${t}» ${libro.titolo}${libro.autore ? ', ' + libro.autore : ''}`); avviso('Copiato'); } catch { avviso('Copia non riuscita'); }
           selezione.pulisci();
         }),
+        az('segno', 'Segna', async () => { await segnaFrase(sel.da.s, selezione.testo()); selezione.pulisci(); }),
         az('voce', 'Pronuncia', () => correggiPronuncia(selezione.testo()))));
+  }
+
+  async function segnaFrase(frase, testo) {
+    const e = { id: nuovoId(), libro: id, cap, frase, tipo: 'segno', testo: testo || testoFrase(frase), data: Date.now() };
+    await db.put('evidenziati', e);
+    evidenziati.push(e);
+    aggiornaSegno();
+    avviso('Segnalibro messo: lo trovi nell’indice, in Evidenziati');
   }
 
   async function salvaEvidenza(colore, testoNota) {
@@ -605,8 +632,15 @@ export async function apriLettore(radice, id, esci) {
     if (!attivo) return;
     attivo = false;
     document.removeEventListener('leggio-lavoro', quandoLavoro);
-    sintesi.pausa();
-    registrato.scarica();
+    if (lettore.attivo) {
+      salvaPosizione();
+      prendi({ libro, cap, frase: frasi[lettore.indice]?.id ?? libro.posizione?.frase ?? 0, lettore, sintesi, registrato });
+      try { localStorage.setItem('leggio-ascoltava', id); } catch { /* niente */ }
+    } else {
+      sintesi.pausa();
+      registrato.scarica();
+      try { localStorage.removeItem('leggio-ascoltava'); } catch { /* niente */ }
+    }
     clearInterval(orologio); clearInterval(timerTick); clearTimeout(timer);
     if (!ripristino) salvaPosizione();
     db.put('libri', libro);
@@ -621,6 +655,16 @@ export async function apriLettore(radice, id, esci) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') salvaSubito(); });
 
   await caricaCapitolo(cap, libro.posizione?.frase || 0);
+  if (ripreso && lettore.attivo) {
+    sintesi.onStato(true);
+    segui(true);
+  } else {
+    let ascoltava = null;
+    try { ascoltava = localStorage.getItem('leggio-ascoltava'); } catch { /* niente */ }
+    if (ascoltava === id && !sessionStorage.getItem('leggio-ascolta')) {
+      avviso('Stavi ascoltando questo libro', { durata: 8000, azione: { testo: 'Riprendi', fn: () => alternaAscolto() } });
+    }
+  }
   if (sessionStorage.getItem('leggio-ascolta')) {
     sessionStorage.removeItem('leggio-ascolta');
     setTimeout(() => alternaAscolto(), 300);

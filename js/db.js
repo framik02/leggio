@@ -189,7 +189,7 @@ const PREDEFINITE = {
   corpo: 19,
   interlinea: 1.6,
   margini: 22,
-  giustifica: false,
+  giustifica: true,
   velocita: 1,
   voce_it: '',
   voce_en: '',
@@ -205,6 +205,8 @@ export async function impostazioni() {
   if (_cache) return _cache;
   const salvate = (await db.get('impostazioni', 'generali')) || {};
   _cache = { ...PREDEFINITE, ...salvate };
+  // Dal 15/10/2026 il testo è giustificato per tutti, anche per chi aveva l'impostazione vecchia.
+  if (!_cache.giustificaV2) { _cache.giustifica = true; _cache.giustificaV2 = true; db.put('impostazioni', { ..._cache }, 'generali'); }
   return _cache;
 }
 export async function salvaImpostazioni(parz) {
