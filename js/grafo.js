@@ -55,7 +55,8 @@ export async function vistaMappa(radice, schede) {
   aggiornaMappa().catch(e => console.warn('mappa', e));
 
   const testa = h('header', { class: 'lib-testa' },
-    h('div', {}, h('div', { class: 'marchio' }, h('span', { class: 'marchio-segno' }), 'Leggio'), h('h1', {}, 'Mappa')));
+    h('div', {}, h('div', { class: 'marchio' }, h('span', { class: 'marchio-segno' }), 'Leggio'), h('h1', {}, 'Mappa')),
+    h('a', { class: 'ico', href: '#/chiedi', 'aria-label': 'Chiedi alla libreria', title: 'Chiedi alla libreria' }, icona('cerca')));
 
   let corpo;
   if (!pronta) {

@@ -573,3 +573,28 @@ button.anello { border: 0; cursor: pointer; font: inherit; color: inherit; }
 .mappa-legenda { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--secondario); }
 .mappa-legenda i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
 .mappa-simili { margin-top: 8px; }
+
+/* ------------------------------------------------------------ chiedi alla libreria */
+.chiedi-ingresso { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; margin-bottom: 12px; border-radius: 14px; background: var(--foglio); border: 1px solid var(--filetto-forte); color: var(--secondario); box-shadow: var(--ombra); }
+.chiedi-ingresso span { flex: 1; font-size: 16px; color: var(--inchiostro); }
+.chiedi-ingresso small { font-size: 12px; }
+.chiedi-ingresso svg { color: var(--accento); }
+.chiedi-riga { display: flex; align-items: center; gap: 10px; background: var(--foglio); border: 1px solid var(--filetto-forte); border-radius: 14px; padding: 0 14px; margin-bottom: 14px; }
+.chiedi-riga svg { color: var(--accento); flex: none; }
+.chiedi-campo { border: 0; padding: 0; height: 50px; background: transparent; font-size: 17px; }
+.chiedi-campo:focus { outline: none; }
+.chiedi-modello { display: flex; gap: 12px; align-items: center; justify-content: space-between; border: 1px solid var(--filetto); border-radius: var(--raggio); background: var(--foglio); padding: 12px 14px; margin-bottom: 14px; }
+.chiedi-modello p { margin: 4px 0 0; }
+.chiedi-modello .btn { flex: none; min-width: 92px; }
+.chiedi-spiega { margin: 4px 0 14px; line-height: 1.5; }
+.chiedi-sintesi { font-family: var(--serif); font-size: 18px; font-weight: 600; margin: 4px 0 10px; }
+.chiedi-filtri { margin-bottom: 6px; }
+.chiedi-testo { display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; }
+.chiedi-testo.aperto { display: block; }
+.chiedi-testo mark { background: var(--ev-giallo); color: inherit; border-radius: 2px; padding: 0 1px; }
+.chiedi-frase { background: var(--accento-velo); box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 3px; }
+.riga-bottoni .btn.piccolo { flex: none; }
+.chiedi-testo.finestra { display: block; }
+.chiedi-testo:not(.aperto) .fuori { display: none; }
+.chiedi-testo.aperto .puntini { display: none; }
+.chiedi-cap { margin: -2px 0 6px 16px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

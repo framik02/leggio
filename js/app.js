@@ -29,6 +29,7 @@ async function instrada() {
   document.body.classList.remove('in-lettura');
   if (sezione === 'evidenziati') return vistaEvidenziati();
   if (sezione === 'impostazioni') return vistaImpostazioni();
+  if (sezione === 'chiedi') return (await import('./chiedi.js')).vistaChiedi(radice, schede, arg ? decodeURIComponent(arg) : '');
   if (sezione === 'mappa') return (await import('./grafo.js')).vistaMappa(radice, schede);
   return vistaLibreria();
 }
@@ -147,6 +148,7 @@ async function vistaLibreria() {
   const fab = h('button', { class: 'fab', 'aria-label': 'Importa libri', onclick: () => input.click() }, icona('piu', 26));
 
   radice.replaceChildren(h('main', { class: 'vista libreria' }, testa, avvisoBrowser, avvisoRotti, continua, vuota,
+    libri.length > 1 ? h('a', { class: 'chiedi-ingresso', href: '#/chiedi' }, icona('cerca', 20), h('span', {}, 'Chiedi ai tuoi libri'), h('small', {}, 'cerca per significato')) : null,
     libri.length ? h('div', { class: 'strumenti' }, h('div', { class: 'cerca-riga' }, cercaCampo, selOrdine), filtri) : null,
     libri.length ? griglia : null, input), libri.length ? fab : null, schede(''));
   disegnaGriglia();

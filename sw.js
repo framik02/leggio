@@ -1,8 +1,8 @@
 // Tiene l'app disponibile anche senza rete. Cambiare VERSIONE a ogni rilascio.
-const VERSIONE = 'leggio-0.10.0';
+const VERSIONE = 'leggio-0.11.0';
 const FILE = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/db.js', 'js/ui.js', 'js/voce.js', 'js/libri.js', 'js/lettore.js', 'js/audio.js', 'js/vocipanel.js', 'js/copia.js', 'js/selezione.js', 'js/ascolto.js', 'js/extra.js', 'js/mappa.js', 'js/grafo.js',
+  'js/app.js', 'js/db.js', 'js/ui.js', 'js/voce.js', 'js/libri.js', 'js/lettore.js', 'js/audio.js', 'js/vocipanel.js', 'js/copia.js', 'js/selezione.js', 'js/ascolto.js', 'js/extra.js', 'js/mappa.js', 'js/grafo.js', 'js/chiedi.js',
   'js/import/comune.js', 'js/import/epub.js', 'js/import/pdf.js', 'js/import/testo.js',
   'vendor/jszip.min.js', 'vendor/pdf.min.mjs', 'vendor/pdf.worker.min.mjs',
   'fonts/literata-latin-wght-normal.woff2', 'fonts/literata-latin-wght-italic.woff2',
@@ -16,7 +16,7 @@ self.addEventListener('install', e => {
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== VERSIONE).map(x => caches.delete(x)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x.startsWith('leggio-') && x !== VERSIONE).map(x => caches.delete(x)))).then(() => self.clients.claim()));
 });
 
 // Prima la rete per i file dell'app, così gli aggiornamenti arrivano; la cache se offline.

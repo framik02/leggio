@@ -285,7 +285,7 @@ export async function recuperaLavori(libroId) {
   const noti = new Set((await db.tutti('lavori')).map(l => l.ramo));
   const libri = new Set((await db.tutti('libri')).map(l => l.id));
   let n = 0;
-  for (const r of rami) {
+  for (const r of Array.isArray(rami) ? rami : []) {
     const m = r.name.match(/^lavoro\/([a-z0-9]+)-([a-z0-9]+)$/);
     if (!m || noti.has(r.name) || !libri.has(m[1]) || (libroId && m[1] !== libroId)) continue;
     try {
