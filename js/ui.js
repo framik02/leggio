@@ -35,6 +35,7 @@ const P = {
   segnoPieno: '<path d="M7 4h10v16l-5-4-5 4z" fill="currentColor"/>',
   cerca: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>',
   altro: '<circle cx="5.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
+  mappa: '<circle cx="6" cy="7" r="2.6"/><circle cx="18" cy="6" r="2"/><circle cx="16" cy="17.5" r="3"/><circle cx="6.5" cy="17" r="1.8"/><path d="M8.4 8.1l5.6 7.6M8.5 6.8l7.5-.6M17.7 8l-.9 6.5M8.3 17.1l4.7.3"/>',
   libri: '<path d="M4 4.5h4v15H4zM10 4.5h4v15h-4zM16.2 5.2l3.8-1 3.2 14.6-3.8 1z"/>',
   matita: '<path d="M4 20l1-4.5L15.5 5a2 2 0 012.9 0l.6.6a2 2 0 010 2.9L8.5 19z"/>',
   ingranaggio: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/>',

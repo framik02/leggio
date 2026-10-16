@@ -19,7 +19,7 @@ async function conf() {
 }
 export async function configurato() { return !!(await conf()).token; }
 
-async function gh(percorso, opz = {}) {
+export async function gh(percorso, opz = {}) {
   const { token, repo } = await conf();
   if (!token) throw new Error('Manca il codice di accesso a GitHub. Inseriscilo in Impostazioni › Audio generato.');
   const url = percorso.startsWith('http') ? percorso : `https://api.github.com/repos/${repo}${percorso}`;
@@ -71,7 +71,7 @@ async function creaRamo(ramo, file) {
   await gh('/git/refs', { method: 'POST', body: JSON.stringify({ ref: `refs/heads/${ramo}`, sha: commit.sha }) });
 }
 
-async function lancia(ramo, azione = 'avvia') {
+export async function lancia(ramo, azione = 'avvia') {
   await gh('/actions/workflows/lettura.yml/dispatches', { method: 'POST', body: JSON.stringify({ ref: 'main', inputs: { lavoro: ramo, azione } }) });
 }
 

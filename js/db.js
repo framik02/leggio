@@ -1,7 +1,7 @@
 // Archivio locale su IndexedDB. Tutto resta sul dispositivo.
 
 const NOME = 'leggio';
-const VERSIONE = 2;
+const VERSIONE = 3;
 let _db = null;
 
 function apri() {
@@ -25,6 +25,10 @@ function apri() {
         db.createObjectStore('audio', { keyPath: ['libro', 'n'] });
         db.createObjectStore('lavori', { keyPath: 'id' });
         db.createObjectStore('voci', { keyPath: 'id' });
+      }
+      if (e.oldVersion < 3) {
+        // Mappa della conoscenza scaricata da Kaggle: si può sempre ricalcolare, non va nella copia.
+        db.createObjectStore('mappa');
       }
     };
     req.onsuccess = () => { _db = req.result; _db.onversionchange = () => { _db.close(); _db = null; }; ok(_db); };

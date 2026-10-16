@@ -113,7 +113,7 @@ body.in-lettura .avviso { bottom: calc(150px + var(--sotto)); }
 .anello small { font-size: 10px; color: var(--secondario); margin-top: 2px; }
 
 .schede { position: fixed; left: 50%; bottom: calc(12px + var(--sotto)); transform: translateX(-50%); display: flex; gap: 4px; padding: 6px; border-radius: 22px; background: rgba(255, 255, 255, .82); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); box-shadow: 0 0 0 1px rgba(0, 0, 0, .05), var(--ombra); z-index: 20; }
-.schede a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 16px 6px; border-radius: 16px; font-size: 11px; font-weight: 600; color: var(--secondario); min-width: 84px; }
+.schede a { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 10px 6px; border-radius: 16px; font-size: 11px; font-weight: 600; color: var(--secondario); min-width: 72px; }
 .schede a.attiva { color: var(--inchiostro); background: #F1ECE4; }
 .schede a.attiva svg { color: var(--accento); }
 
@@ -514,3 +514,51 @@ button.anello { border: 0; cursor: pointer; font: inherit; color: inherit; }
 .auto-tasto { height: 96px; border-radius: 22px; background: #E8E1D5; color: inherit; display: grid; place-content: center; gap: 2px; }
 .auto-tasto span { font-size: 30px; font-weight: 700; }
 .auto-tasto small { font-size: 12px; opacity: .7; }
+
+/* ------------------------------------------------------------ mappa della conoscenza */
+.mappa-vista.piena { display: flex; flex-direction: column; height: 100dvh; padding-bottom: 0; overflow: hidden; }
+.mappa-stato { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 13px; color: var(--secondario); margin: -4px 0 10px; }
+.mappa-stato:empty { display: none; }
+.mappa-errore { color: var(--pericolo); }
+.btn.piccolo { height: 30px; padding: 0 12px; font-size: 13px; }
+.mappa-barra { display: flex; gap: 8px; margin-bottom: 8px; }
+.mappa-scelta { display: flex; gap: 6px; }
+.mappa-libri { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; margin: 0 -16px; padding-left: 16px; padding-right: 16px; scrollbar-width: none; flex: none; }
+.mappa-libri::-webkit-scrollbar { display: none; }
+.mappa-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--filetto-forte); background: var(--foglio); font-size: 13px; white-space: nowrap; flex: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.mappa-chip.attivo { border-color: var(--inchiostro); box-shadow: inset 0 0 0 1px var(--inchiostro); }
+.mappa-chip.spento { opacity: .5; }
+.mappa-punto { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+.mappa-tela { flex: 1; min-height: 0; margin: 0 -16px; background: var(--foglio); border-top: 1px solid var(--filetto); position: relative; touch-action: none; }
+.mappa-svg { display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+.m-arco { fill: none; stroke: var(--filetto-forte); stroke-linecap: round; opacity: .8; transition: opacity .2s; }
+.m-arco.acceso { stroke: var(--secondario); opacity: .9; }
+.m-nodo { cursor: pointer; transition: opacity .2s; }
+.m-nodo.spento { opacity: .14; }
+.m-nodo.acceso .m-fondo { fill: var(--accento-velo); }
+.m-fondo { fill: var(--foglio); stroke: var(--filetto); stroke-width: 1; }
+.m-libro { stroke: var(--foglio); stroke-width: 3; }
+.m-etichetta { font-family: var(--sans); fill: var(--inchiostro); font-weight: 600; paint-order: stroke; stroke: rgba(255, 255, 255, .92); stroke-width: 3.5px; stroke-linejoin: round; pointer-events: none; }
+.mappa-scheda { position: fixed; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; max-height: 52dvh; overflow-y: auto; background: var(--foglio); border-radius: 22px 22px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, .12); padding: 16px 16px calc(96px + var(--sotto)); transform: translateY(105%); transition: transform .28s cubic-bezier(.2, .8, .2, 1); z-index: 15; }
+.mappa-scheda.aperta { transform: none; }
+.mappa-scheda-testa { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.mappa-scheda-testa h3 { font-family: var(--serif); font-size: 20px; font-weight: 600; line-height: 1.25; }
+.tenue { color: var(--secondario); font-size: 13px; }
+.mappa-parole { font-size: 13px; color: var(--secondario); margin-bottom: 10px; }
+.mappa-barre { display: grid; gap: 6px; margin-bottom: 12px; }
+.mappa-barra-libro { display: grid; grid-template-columns: 10px minmax(0, 1fr) 80px 28px; gap: 8px; align-items: center; font-size: 13px; }
+.mappa-barra-titolo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mappa-barra-fondo { height: 6px; border-radius: 3px; background: var(--filetto); overflow: hidden; }
+.mappa-barra-fondo span { display: block; height: 100%; border-radius: 3px; }
+.mappa-vicini { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.mappa-sotto { font-size: 13px; text-transform: none; color: var(--secondario); margin: 6px 0 8px; font-weight: 600; }
+.mappa-dialogo { border-top: 1px solid var(--filetto); padding-top: 10px; margin-top: 4px; }
+.mappa-dialogo-testa { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+.mappa-dialogo-testa strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mappa-esempi { display: grid; gap: 10px; }
+.mappa-passaggio { border: 1px solid var(--filetto); border-radius: var(--raggio); padding: 12px; }
+.mappa-passaggio-testa { display: flex; align-items: center; gap: 7px; font-size: 13px; margin-bottom: 6px; min-width: 0; }
+.mappa-passaggio-testa strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mappa-passaggio p { font-family: var(--serif); font-size: 15px; line-height: 1.5; margin: 0 0 8px; }
+.mappa-vista.piena .lib-testa { margin-bottom: 8px; }
+.mappa-vista.piena .lib-testa h1 { font-size: 30px; }

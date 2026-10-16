@@ -29,6 +29,7 @@ async function instrada() {
   document.body.classList.remove('in-lettura');
   if (sezione === 'evidenziati') return vistaEvidenziati();
   if (sezione === 'impostazioni') return vistaImpostazioni();
+  if (sezione === 'mappa') return (await import('./grafo.js')).vistaMappa(radice, schede);
   return vistaLibreria();
 }
 window.addEventListener('hashchange', () => instrada().catch(mostraErrore));
@@ -55,7 +56,7 @@ export const installata = () => window.matchMedia('(display-mode: standalone)').
 
 function schede(attiva) {
   const v = (k, ic, t) => h('a', { href: `#/${k}`, class: attiva === k ? 'attiva' : '' }, icona(ic), h('span', {}, t));
-  return h('nav', { class: 'schede' }, v('', 'libri', 'Libreria'), v('evidenziati', 'evidenzia', 'Evidenziati'), v('impostazioni', 'ingranaggio', 'Impostazioni'));
+  return h('nav', { class: 'schede' }, v('', 'libri', 'Libreria'), v('evidenziati', 'evidenzia', 'Evidenziati'), v('mappa', 'mappa', 'Mappa'), v('impostazioni', 'ingranaggio', 'Impostazioni'));
 }
 
 function copertina(libro, cls = '') {
@@ -149,6 +150,8 @@ async function vistaLibreria() {
     libri.length ? h('div', { class: 'strumenti' }, h('div', { class: 'cerca-riga' }, cercaCampo, selOrdine), filtri) : null,
     libri.length ? griglia : null, input), libri.length ? fab : null, schede(''));
   disegnaGriglia();
+  // La mappa della conoscenza si aggiorna da sola quando servono libri nuovi.
+  if (libri.length) import('./mappa.js').then(m => m.aggiornaMappa()).catch(e => console.warn('mappa', e));
 }
 
 // Su iPhone l'unico posto dove l'archivio resta è l'app aggiunta alla Home da Safari.
@@ -175,6 +178,7 @@ async function importaFile(files) {
     try {
       const l = await importa(f, p => { av.firstChild.textContent = `Importo ${f.name}… ${Math.round(p * 100)}%`; });
       av.remove();
+      import('./mappa.js').then(m => m.segnaImportazione()).catch(() => {});
       avviso(`Aggiunto: ${l.titolo}`, { azione: { testo: 'Apri', fn: () => { location.hash = `#/libro/${l.id}`; } } });
     } catch (e) {
       av.remove();
