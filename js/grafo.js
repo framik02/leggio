@@ -17,7 +17,10 @@ const s = (tag, attr = {}, ...figli) => {
   return el;
 };
 
-let vista = 'temi';
+let vista = 'idee';
+const mappaDi = tm => tm.mappa || 'idee';
+// Un tema è condiviso se almeno due libri vi contribuiscono davvero, non con un passaggio sparso.
+export const condiviso = tm => Object.values(tm.libri).filter(c => c >= Math.max(2, tm.n * 0.1)).length >= 2;
 
 export async function vistaMappa(radice, schede) {
   const mappa = await caricaMappa();
@@ -83,25 +86,25 @@ export async function vistaMappa(radice, schede) {
   const scheda = h('div', { class: 'mappa-scheda' });
 
   const disegnaScelta = () => scelta.replaceChildren(
-    ...[['temi', 'Temi'], ['libri', 'Libri']].map(([k, t]) => h('button', { class: `pill ${vista === k ? 'attivo' : ''}`, onclick: () => { vista = k; disegnaScelta(); disegna(); } }, t)));
+    ...[['idee', 'Idee'], ['motivi', 'Motivi'], ['libri', 'Libri']].filter(([k]) => k === 'libri' || mappa.temi.some(tm => mappaDi(tm) === k)).map(([k, t]) => h('button', { class: `pill ${vista === k ? 'attivo' : ''}`, onclick: () => { vista = k; disegnaScelta(); disegna(); } }, t)));
   const disegnaChips = () => chips.replaceChildren(...ids.map(id => h('button', {
     class: `mappa-chip ${filtroLibro === id ? 'attivo' : ''} ${filtroLibro && filtroLibro !== id ? 'spento' : ''}`,
     onclick: () => { filtroLibro = filtroLibro === id ? null : id; disegnaChips(); grafo?.filtra(filtroLibro); },
   }, h('span', { class: 'mappa-punto', style: { background: colore[id] } }), titolo(id))));
 
   let grafo = null;
-  const ctx = { mappa, colore, titolo, libri, scheda, apriTema: id => { vista = 'temi'; disegnaScelta(); disegna(id); } };
+  const ctx = { mappa, colore, titolo, libri, scheda, apriTema: id => { vista = mappaDi(mappa.temi.find(t => t.id === id) || {}); disegnaScelta(); disegna(id); } };
   const disegna = focoIniziale => {
     scheda.classList.remove('aperta');
     grafo?.chiudi();
-    grafo = vista === 'temi' ? grafoTemi(tela, ctx) : grafoLibri(tela, ctx);
+    grafo = vista === 'libri' ? grafoLibri(tela, ctx) : grafoTemi(tela, ctx, mappa.temi.filter(tm => mappaDi(tm) === vista));
     if (filtroLibro) grafo.filtra(filtroLibro);
     if (focoIniziale !== undefined) grafo.fuoco(focoIniziale);
   };
 
   radice.replaceChildren(h('main', { class: 'vista mappa-vista piena' }, testa, stato, h('div', { class: 'mappa-barra' }, scelta), chips, tela, scheda), schede('mappa'));
   disegnaScelta(); disegnaChips();
-  if (!mappa.temi.length) vista = 'libri';
+  if (vista !== 'libri' && !mappa.temi.some(tm => mappaDi(tm) === vista)) vista = mappa.temi.length ? mappaDi(mappa.temi[0]) : 'libri';
   disegnaScelta();
   disegna();
 }
@@ -211,7 +214,22 @@ function separa(nodi, giri = 160, spazio = 14) {
   }
 }
 
-// Archi portanti: albero di peso massimo più l'arco più forte di ogni nodo.
+// Archi dei temi: solo i legami forti, al massimo due per tema. Niente albero:
+// con molti temi gli archi lunghi che lo tengono insieme attraversano tutto.
+function legamiForti(archi) {
+  const pesi = archi.map(a => a[2]).sort((a, b) => a - b);
+  const soglia = pesi[Math.floor(pesi.length * 0.6)] ?? 0;
+  const conta = new Map();
+  const tenuti = new Set();
+  [...archi.keys()].sort((a, b) => archi[b][2] - archi[a][2]).forEach(i => {
+    const [a, b, w] = archi[i];
+    if (w < soglia || (conta.get(a) || 0) >= 2 || (conta.get(b) || 0) >= 2) return;
+    tenuti.add(i); conta.set(a, (conta.get(a) || 0) + 1); conta.set(b, (conta.get(b) || 0) + 1);
+  });
+  return tenuti;
+}
+
+// Archi portanti fra i libri: albero di peso massimo più l'arco più forte di ogni nodo.
 function portanti(n, archi) {
   const padre = [...Array(n).keys()];
   const trova = x => (padre[x] === x ? x : (padre[x] = trova(padre[x])));
@@ -239,22 +257,24 @@ function curva(a, b) {
 }
 
 // ---------------------------------------------------------------- vista temi
-function grafoTemi(contenitore, ctx) {
+function grafoTemi(contenitore, ctx, temi) {
   const { mappa, colore, scheda } = ctx;
   const t = telaSvg(contenitore);
   const L = 520;
-  const xs = mappa.temi.map(x => x.x), ys = mappa.temi.map(x => x.y);
+  const xs = temi.map(x => x.x), ys = temi.map(x => x.y);
   const [mx, Mx, my, My] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
   const scala = L / Math.max(Mx - mx, My - my, 1e-6);
-  const nodi = mappa.temi.map(tm => {
+  const nodi = temi.map(tm => {
     const r = Math.max(7, Math.min(30, 4 + 2.4 * Math.sqrt(tm.n)));
     const x = (tm.x - mx) * scala, y = (tm.y - my) * scala;
-    return { tm, id: tm.id, r, x, y, x0: x, y0: y, peso: tm.n, fs: r > 16 ? 13 : 12, etichetta: nomeBreve(tm.nome) };
+    // i temi condivisi fra libri sono il cuore della mappa: etichetta prima e colore pieno
+    const comune = condiviso(tm);
+    return { tm, id: tm.id, r, x, y, x0: x, y0: y, peso: tm.n * (comune ? 4 : 1), condiviso: comune, fs: r > 16 ? 13 : 12, etichetta: nomeBreve(tm.nome) };
   });
-  separa(nodi);
+  separa(nodi, 160, 22);
   const perId = new Map(nodi.map((n, i) => [n.id, i]));
   const archi = (mappa.archi || []).filter(([a, b]) => perId.has(a) && perId.has(b)).map(([a, b, w]) => [perId.get(a), perId.get(b), w]);
-  const tenuti = portanti(nodi.length, archi);
+  const tenuti = legamiForti(archi);
   const wmax = Math.max(...archi.map(a => a[2]), 1e-6);
 
   const strArchi = s('g', { class: 'm-archi' });
@@ -278,7 +298,7 @@ function grafoTemi(contenitore, ctx) {
     });
     n.testo = s('text', { class: 'm-etichetta', x: 0, y: n.r + 2, 'text-anchor': 'middle', 'dominant-baseline': 'hanging' });
     n.testo.textContent = n.etichetta;
-    n.el = s('g', { class: 'm-nodo', transform: `translate(${n.x} ${n.y})` }, s('circle', { r: n.r, class: 'm-fondo' }), anello, n.testo);
+    n.el = s('g', { class: `m-nodo ${n.condiviso ? '' : 'solo'}`, transform: `translate(${n.x} ${n.y})` }, s('circle', { r: n.r, class: 'm-fondo' }), anello, n.testo);
     n.el.addEventListener('click', e => { if (!t.eUnTocco()) return; e.stopPropagation(); fuoco(n.id); });
     strNodi.append(n.el);
   }
@@ -331,7 +351,7 @@ async function schedaTema(tm, vicini, ctx, fuoco) {
   const esempi = h('div', { class: 'mappa-esempi' }, h('p', { class: 'tenue' }, 'Carico i passaggi…'));
   scheda.replaceChildren(
     h('div', { class: 'mappa-scheda-testa' },
-      h('div', {}, h('h3', {}, tm.nome), h('div', { class: 'tenue' }, `${tm.n} passaggi · ${Object.keys(tm.libri).length} libri`)),
+      h('div', {}, h('h3', {}, tm.nome), h('div', { class: 'tenue' }, `${tm.n} passaggi · ${Object.keys(tm.libri).length === 1 ? 'un libro solo' : Object.keys(tm.libri).length + ' libri'}`)),
       bottoneIcona('chiudi', 'Chiudi', () => scheda.classList.remove('aperta'), 'piccola')),
     tm.parole?.length > 3 ? h('div', { class: 'mappa-parole' }, tm.parole.join(' · ')) : null,
     h('div', { class: 'mappa-barre' }, ...Object.entries(tm.libri).sort((a, b) => b[1] - a[1]).map(([lid, c]) =>
@@ -385,7 +405,10 @@ function grafoLibri(contenitore, ctx) {
     .map(([a, b, c]) => [perId.get(a), perId.get(b), c / Math.sqrt(mappa.libri[a].n * mappa.libri[b].n), c]);
   const wmax = Math.max(...archi.map(a => a[2]), 1e-6);
   // disposizione a molle, deterministica
-  for (let it = 0; it < 400; it++) {
+  // Posizione dedotta dallo spazio (vicini per stile e argomento); altrimenti a molle.
+  const dalloSpazio = ids.length >= 3 && ids.every(id => typeof mappa.libri[id].x === 'number');
+  if (dalloSpazio) nodi.forEach(a => { a.x = 230 * mappa.libri[a.id].x; a.y = 230 * mappa.libri[a.id].y; });
+  for (let it = 0; it < (dalloSpazio ? 0 : 400); it++) {
     const temp = 1 - it / 400;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
       const a = nodi[i], b = nodi[j];
@@ -450,6 +473,29 @@ function grafoLibri(contenitore, ctx) {
   return { chiudi() {}, filtra: lid => { if (lid) fuoco(lid); else sfoca(); }, fuoco: () => {} };
 }
 
+// Il genere si deduce dal profilo dei passaggi, senza chiederlo a nessuno.
+const TIPI = { riflessione: ['Riflessione', '#5B6F8A'], esposizione: ['Spiegazione', '#9DB0C4'], narrazione: ['Narrazione', '#B08A5A'], descrizione: ['Descrizione', '#D9C49C'], dialogo: ['Dialogo', '#9C8AA8'] };
+export function genere(p) {
+  if (!p) return '';
+  const idee = (p.riflessione || 0) + (p.esposizione || 0);
+  if (idee >= 0.7) return (p.esposizione || 0) > (p.riflessione || 0) ? 'Saggio' : 'Saggio riflessivo';
+  if ((p.riflessione || 0) >= 0.25) return 'Romanzo di idee';
+  if ((p.dialogo || 0) >= 0.3) return 'Narrativa dialogata';
+  if ((p.descrizione || 0) >= 0.3) return 'Narrativa descrittiva';
+  return 'Narrativa';
+}
+
+function cartaIdentita(id, ctx) {
+  const info = ctx.mappa.libri[id];
+  if (!info?.profilo) return null;
+  const voci = Object.entries(info.profilo).filter(([, v]) => v > 0.01).sort((a, b) => b[1] - a[1]);
+  return h('div', { class: 'mappa-carta' },
+    h('div', { class: 'mappa-genere' }, genere(info.profilo)),
+    h('div', { class: 'mappa-profilo' }, ...voci.map(([k, v]) => h('span', { title: TIPI[k]?.[0], style: { width: `${(v * 100).toFixed(1)}%`, background: TIPI[k]?.[1] || GRIGIO } }))),
+    h('div', { class: 'mappa-legenda' }, ...voci.map(([k, v]) => h('span', {}, h('i', { style: { background: TIPI[k]?.[1] || GRIGIO } }), `${TIPI[k]?.[0] || k} ${Math.round(v * 100)}%`))),
+    info.vicini?.length ? h('div', { class: 'tenue mappa-simili' }, 'Somiglia per stile e argomento a ', h('strong', {}, info.vicini.slice(0, 2).map(([l]) => ctx.titolo(l)).join(' e '))) : null);
+}
+
 function schedaLibro(id, altri, ctx) {
   const { scheda, mappa, colore, titolo } = ctx;
   // temi in comune: quelli dove entrambi i libri hanno passaggi, pesati sul minore
@@ -458,8 +504,9 @@ function schedaLibro(id, altri, ctx) {
   const mieiTemi = mappa.temi.filter(tm => tm.libri[id]).sort((a, b) => b.libri[id] - a.libri[id]).slice(0, 6);
   scheda.replaceChildren(
     h('div', { class: 'mappa-scheda-testa' },
-      h('div', {}, h('h3', {}, titolo(id)), h('div', { class: 'tenue' }, `${mappa.libri[id].n} passaggi · ${mieiTemi.length ? 'temi principali qui sotto' : 'temi in arrivo con più libri'}`)),
+      h('div', {}, h('h3', {}, titolo(id)), h('div', { class: 'tenue' }, `${mappa.libri[id].n} passaggi`)),
       bottoneIcona('chiudi', 'Chiudi', () => scheda.classList.remove('aperta'), 'piccola')),
+    cartaIdentita(id, ctx),
     mieiTemi.length ? h('div', { class: 'mappa-vicini' }, h('span', { class: 'tenue' }, 'Parla di'),
       ...mieiTemi.map(tm => h('button', { class: 'mappa-chip', onclick: () => ctx.apriTema(tm.id) }, nomeBreve(tm.nome)))) : null,
     h('h4', { class: 'mappa-sotto' }, 'Dialoga con'),
