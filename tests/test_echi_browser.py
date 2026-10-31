@@ -74,6 +74,7 @@ with sync_playwright() as pw:
     page.locator('.eco-richiamo').wait_for()
     assert page.locator('.eco-richiamo').count() == 1
     assert page.locator('.eco-richiamo').inner_text() == '1'
+    vista = page.evaluate("({root:scrollY,lettore:document.querySelector('.l-scorri').scrollTop})")
     assert page.evaluate("async()=>{const{frasiDalCapitolo}=await import('/js/voce.js');return frasiDalCapitolo(document.querySelector('.l-pagina')).map(f=>f.testo).join(' ')}").startswith('Ricordare significa ricostruire')
     page.locator('.eco-richiamo').click()
     sheet = page.get_by_role('dialog', name='Altri autori', exact=True)
@@ -89,6 +90,7 @@ with sync_playwright() as pw:
     assert page.evaluate("async()=>{const{db}=await import('/js/db.js');const b=await db.get('libri','b');return b.progresso===0&&b.posizione.frase===0&&!b.aperto}")
     target.get_by_role('button',name='Torna ai collegamenti',exact=True).click()
     target.wait_for(state='detached')
+    assert page.evaluate("({root:scrollY,lettore:document.querySelector('.l-scorri').scrollTop})") == vista
     sheet.get_by_role('button',name='Salva confronto',exact=True).click()
     sheet.get_by_role('button',name='Salvato',exact=True).wait_for()
     assert page.evaluate("async()=>{const{db}=await import('/js/db.js');return (await db.get('confronti','coppia-ab')).destinazione.testo.startsWith('«La memoria')}")
@@ -97,6 +99,7 @@ with sync_playwright() as pw:
     page.screenshot(path=str(ROOT/'.prova/echi/lettore-echi-mobile.png'),full_page=True)
     sheet.get_by_role('button',name='Chiudi',exact=True).click()
     sheet.wait_for(state='detached')
+    assert page.evaluate("({root:scrollY,lettore:document.querySelector('.l-scorri').scrollTop})") == vista
     page.get_by_role('button',name='Aspetto',exact=True).click()
     aspect = page.get_by_role('dialog',name='Aspetto',exact=True)
     aspect.get_by_label('Collegamenti ad altri autori').uncheck()

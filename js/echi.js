@@ -65,7 +65,13 @@ async function contesto(e, aperto) {
       h('h3', {}, c.titolo || `Capitolo ${e.cap + 1}`), ...paragrafi,
       ...(!tutto ? [h('button', { class: 'btn largo', onclick: () => { tutto = true; disegna(); } }, 'Tutto il capitolo')] : []),
       h('button', { class: 'btn largo', onclick: () => f.chiudi() }, 'Torna ai collegamenti'));
-    if (tutto) requestAnimationFrame(() => corpo.querySelector('.chiedi-frase')?.scrollIntoView({ block: 'center' }));
+    if (tutto) requestAnimationFrame(() => {
+      const prova = corpo.querySelector('.chiedi-frase');
+      if (!prova) return;
+      // Si muove solo il foglio: scrollIntoView può spostare anche la pagina sotto.
+      const dentro = prova.getBoundingClientRect(), riquadro = f.corpo.getBoundingClientRect();
+      f.corpo.scrollTop += dentro.top - riquadro.top - Math.max(0, (riquadro.height - dentro.height) / 2);
+    });
   };
   const f = aperto('Nel contesto', corpo, { alto: true });
   disegna();
@@ -150,8 +156,16 @@ export function creaEchi({ pagina, libro, capitolo, inUso, sospendi, riprendi, c
     const lista = (await righe(i)).filter(r => da === null || r.frasiOrigine.some(n => n >= da && n <= a));
     if (!lista.length) { await nessuno(); return; }
     const corpo = h('div', { class: 'echi-elenco', 'aria-live': 'polite' });
+    const scorri = pagina.closest('.l-scorri');
+    const vista = { top: scorri?.scrollTop || 0, x: window.scrollX, y: window.scrollY };
     const suonava = sospendi();
-    const f = aperto('Altri autori', corpo, { allaChiusura: () => { if (!distrutto && inUso()) riprendi(suonava); } });
+    const f = aperto('Altri autori', corpo, { allaChiusura: () => {
+      if (!distrutto && inUso()) {
+        if (scorri) scorri.scrollTop = vista.top;
+        window.scrollTo(vista.x, vista.y);
+        riprendi(suonava);
+      }
+    } });
     const schede = [];
     for (const r of lista) {
       const [origine, destinazione] = await Promise.all([
