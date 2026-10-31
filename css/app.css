@@ -601,6 +601,24 @@ button.anello { border: 0; cursor: pointer; font: inherit; color: inherit; }
 
 
 /* ------------------------------------------------------------ echi nel lettore */
+/* La vista Autori riusa colori, schede, tipografia e zoom della mappa. */
+.mappa-autori-controlli { display: grid; gap: 6px; margin-bottom: 10px; flex: none; }
+.mappa-autori-azioni { display: flex; flex-wrap: wrap; gap: 8px; }
+.mappa-autori-azioni .campo { flex: 1 1 150px; min-width: 0; }
+.mappa-autori-azioni .btn { flex: 1 1 150px; }
+.mappa-autori-controlli .nota { font-size: 12px; }
+.mappa-autori-controlli[hidden], .mappa-libri[hidden], .autori-confronti [hidden] { display: none; }
+.autori-coppia { display: grid; gap: 5px; width: 100%; text-align: left; overflow-wrap: anywhere; }
+.autori-confronti { display: grid; gap: 14px; }
+.autori-collegamento { cursor: pointer; transition: opacity .2s; }
+.autori-arco-hit { fill: none; stroke: transparent; stroke-width: 18px; pointer-events: stroke; }
+.m-arco.autori-verificato { stroke: var(--accento); opacity: .65; }
+.m-arco.autori-affinita { stroke-dasharray: 4 5; opacity: .38; }
+.m-autore-iniziali { font-family: var(--sans); font-weight: 600; pointer-events: none; }
+.m-arco.autori-affinita.acceso { stroke: var(--secondario); opacity: .9; }
+.m-arco.autori-verificato.acceso { opacity: 1; }
+.autori-confronto .mf-citazione { max-height: none; overflow: visible; }
+
 .eco-richiamo { display: inline-flex; align-items: center; gap: 3px; min-width: 27px; min-height: 26px; padding: 3px 5px; margin: 0 2px 0 5px; border-radius: 8px; font-family: var(--sans); font-size: 11px; font-weight: 600; line-height: 1; color: var(--accento); background: var(--accento-velo); vertical-align: super; text-indent: 0; user-select: none; }
 .eco-richiamo:active { background: var(--ev-giallo); }
 .echi-elenco { display: grid; gap: 14px; }

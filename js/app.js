@@ -371,7 +371,7 @@ async function vistaImpostazioni() {
       h('p', { class: 'nota' }, `L’archivio di lettura resta su questo telefono. Per preparare audio, mappa e collegamenti, i testi vengono inviati al tuo repository privato GitHub e a Kaggle. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.13')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.14')),
   schede('impostazioni'));
 }
 

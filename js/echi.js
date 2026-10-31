@@ -4,19 +4,17 @@ import { h, icona, foglio, avviso } from './ui.js';
 import { datiLibro, statoMappa, aggiornaMappa, ricostruisci, seguiMappa } from './mappa.js';
 import { frasiDalCapitolo } from './voce.js';
 
-export const ETICHETTE = { affine: 'Idea affine', prospettiva: 'Un’altra prospettiva', contrasto: 'In contrasto' };
-export const stessoAutore = (a, b) => {
-  const normalizza = s => (s || '').normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase()
-    .match(/\p{L}+/gu)?.sort().join(' ') || '';
-  return !normalizza(a) || !normalizza(b) || normalizza(a) === normalizza(b);
-};
+export const ETICHETTE = { affine: 'Idea affine', prospettiva: 'Un’altra prospettiva', contrasto: 'In contrasto', affinita: 'Affinità da verificare' };
+export const chiaveAutore = s => (s || '').normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase()
+  .match(/\p{L}+/gu)?.sort().join(' ') || '';
+export const stessoAutore = (a, b) => !chiaveAutore(a) || !chiaveAutore(b) || chiaveAutore(a) === chiaveAutore(b);
 const posizioneUguale = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length >= 3 && a.slice(0, 3).every((x, i) => x === b[i]);
 const proveValide = (ids, p) => Array.isArray(ids) && ids.length > 0 && ids.every(n => Number.isInteger(n) && n >= p[1] && n <= p[2]);
 
 export function legameValido(r, sorgente, destinazione, libro, altro, i) {
   const p = sorgente?.passaggi?.[i];
   const q = destinazione?.passaggi?.[r?.passaggio];
-  return !!(r && ETICHETTE[r.relazione] && p && q && r.id && r.libro === altro?.id && altro.id !== libro.id
+  return !!(r && ['affine', 'prospettiva', 'contrasto'].includes(r.relazione) && p && q && r.id && r.libro === altro?.id && altro.id !== libro.id
     && !stessoAutore(libro.autore, altro.autore) && sorgente.versione === destinazione.versione
     && posizioneUguale(r.origine, p) && posizioneUguale(r.destinazione, q)
     && proveValide(r.frasiOrigine, p) && proveValide(r.frasiDestinazione, q)
@@ -34,6 +32,8 @@ async function frasiCapitolo(libro, cap) {
 async function estratto(libro, posizione, ids) {
   const c = await frasiCapitolo(libro.id, posizione[0]);
   if (!c) return null;
+  ids ||= c.frasi.filter(f => f.id >= posizione[1] && f.id <= posizione[2]).map(f => f.id);
+  if (!ids.length) return null;
   const frasi = c.frasi.filter(f => ids.includes(f.id));
   if (frasi.length !== new Set(ids).size) return null;
   return { libro: libro.id, titolo: libro.titolo, autore: libro.autore || '', cap: posizione[0],
@@ -46,7 +46,7 @@ function cita(e) {
     h('p', { class: 'mf-citazione' }, e.testo), h('div', { class: 'echi-cap' }, e.capTitolo || `Capitolo ${e.cap + 1}`));
 }
 
-async function contesto(e, aperto) {
+async function contesto(e, aperto, nelLettore = false) {
   const c = await frasiCapitolo(e.libro, e.cap);
   if (!c) { avviso('Il libro non è più sul telefono. Il confronto salvato conserva gli estratti.'); return; }
   const corpo = h('div', { class: 'echi-contesto' });
@@ -64,7 +64,17 @@ async function contesto(e, aperto) {
     corpo.replaceChildren(h('div', { class: 'echi-meta' }, `${e.autore} · ${e.titolo}`),
       h('h3', {}, c.titolo || `Capitolo ${e.cap + 1}`), ...paragrafi,
       ...(!tutto ? [h('button', { class: 'btn largo', onclick: () => { tutto = true; disegna(); } }, 'Tutto il capitolo')] : []),
-      h('button', { class: 'btn largo', onclick: () => f.chiudi() }, 'Torna ai collegamenti'));
+      h('button', { class: 'btn largo', onclick: () => f.chiudi() }, 'Torna ai collegamenti'),
+      ...(nelLettore ? [h('button', { class: 'btn largo', onclick: async () => {
+        try {
+          const libro = await db.get('libri', e.libro);
+          if (!libro) { avviso('Il libro non è più sul telefono.'); return; }
+          libro.posizione = { cap: e.cap, frase: e.frasi[0] ?? e.da, t: Date.now() };
+          await db.put('libri', libro);
+          try { localStorage.setItem(`leggio-pos-${libro.id}`, JSON.stringify(libro.posizione)); } catch { /* niente */ }
+          location.hash = `#/libro/${libro.id}`;
+        } catch (err) { avviso('Non riesco ad aprire il libro.'); }
+      } }, 'Apri nel lettore')] : []));
     if (tutto) requestAnimationFrame(() => {
       const prova = corpo.querySelector('.chiedi-frase');
       if (!prova) return;
@@ -98,6 +108,85 @@ export async function mostraSalvati() {
   await disegna();
 }
 
+// Dal grafo si consultano entrambi i brani. Nessun limite al numero totale:
+// si caricano venti schede per volta, con accesso esplicito alle successive.
+export async function apriConfronti(confronti, titolo = 'Passaggi collegati') {
+  const lista = h('div', { class: 'echi-elenco' });
+  const riepilogo = h('p', { class: 'nota', role: 'status', 'aria-live': 'polite' });
+  const altro = h('button', { class: 'btn largo' }, 'Mostra altri confronti');
+  const corpo = h('div', { class: 'autori-confronti' },
+    h('p', { class: 'nota' }, 'Apri i due brani nel contesto o raggiungi il libro nel lettore.'), lista, riepilogo, altro);
+  const aperto = (nome, contenuto, opz) => foglio(nome, contenuto, opz);
+  const f = aperto(titolo, corpo, { alto: true });
+  let limite = 0, occupato = false;
+  const nascosti = new Set((await db.tutti('confronti')).filter(c => c.stato === 'nascosto').map(c => c.id));
+  const disponibili = confronti.filter(c => !nascosti.has(c.id));
+  const conta = () => {
+    const tot = disponibili.filter(c => !nascosti.has(c.id)).length;
+    riepilogo.textContent = `${lista.children.length} di ${tot} collegamenti`;
+    altro.hidden = limite >= disponibili.length;
+  };
+  async function scheda(c) {
+    const [a, b] = await Promise.all([db.get('libri', c.a.libro), db.get('libri', c.b.libro)]);
+    if (!a || !b || stessoAutore(a.autore, b.autore)) return null;
+    const [da, aDati] = await Promise.all([datiLibro(a.id), datiLibro(b.id)]);
+    if (da?.versione !== c.versione || aDati?.versione !== c.versione) return null;
+    const [origine, destinazione] = await Promise.all([
+      estratto(a, c.a.posizione, c.a.frasi), estratto(b, c.b.posizione, c.b.frasi)]);
+    if (!origine || !destinazione) return null;
+    const precedente = await db.get('confronti', c.id);
+    const salva = h('button', { class: 'btn piccolo', 'aria-pressed': precedente?.stato === 'salvato' ? 'true' : 'false' },
+      precedente?.stato === 'salvato' ? 'Salvato' : 'Salva confronto');
+    salva.addEventListener('click', async () => {
+      salva.disabled = true;
+      try {
+        const attuale = await db.get('confronti', c.id);
+        if (attuale?.stato === 'salvato') {
+          await db.del('confronti', c.id); salva.textContent = 'Salva confronto'; salva.setAttribute('aria-pressed', 'false');
+        } else {
+          await db.put('confronti', { id: c.id, chiave: c.chiave, stato: 'salvato', data: Date.now(),
+            origine, destinazione, relazione: c.relazione, verificato: c.verificato,
+            spiegazione: c.spiegazione || 'Affinità automatica: il rapporto tra le idee non è stato confermato.', nota: attuale?.nota || '' });
+          salva.textContent = 'Salvato'; salva.setAttribute('aria-pressed', 'true'); avviso('Confronto salvato');
+        }
+      } catch (err) { avviso('Non riesco a salvare il confronto.'); }
+      finally { salva.disabled = false; }
+    });
+    const card = h('section', { class: 'mappa-passaggio echi-scheda autori-confronto', 'data-confronto': c.id },
+      h('div', { class: 'occhio' }, ETICHETTE[c.relazione] || 'Affinità da verificare'),
+      c.idea ? h('p', { class: 'echi-idea' }, c.idea) : null, cita(origine), cita(destinazione),
+      h('p', { class: 'echi-spiegazione' }, c.spiegazione || 'I brani sono stati accostati per somiglianza. Il rapporto tra le idee non è stato confermato.'),
+      h('div', { class: 'riga-bottoni echi-azioni' },
+        h('button', { class: 'btn piccolo', onclick: () => contesto(origine, aperto, true).catch(() => avviso('Contesto non disponibile.')) }, 'Primo brano'),
+        h('button', { class: 'btn piccolo', onclick: () => contesto(destinazione, aperto, true).catch(() => avviso('Contesto non disponibile.')) }, 'Secondo brano'), salva),
+      h('button', { class: 'echi-nascondi', onclick: async () => {
+        try {
+          if ((await db.get('confronti', c.id))?.stato === 'salvato') { avviso('Rimuovi prima il confronto dai salvati.'); return; }
+          await db.put('confronti', { id: c.id, chiave: c.chiave, stato: 'nascosto', data: Date.now() });
+          nascosti.add(c.id); card.remove(); conta(); document.dispatchEvent(new Event('leggio-confronti'));
+        } catch (err) { avviso('Non riesco a nascondere il confronto.'); }
+      } }, 'Non pertinente'));
+    return card;
+  }
+  async function carica() {
+    if (occupato || !f.el.isConnected) return;
+    occupato = true; altro.disabled = true;
+    try {
+      const fine = Math.min(limite + 20, disponibili.length);
+      const lotto = disponibili.slice(limite, fine).filter(c => !nascosti.has(c.id));
+      const schede = await Promise.all(lotto.map(scheda));
+      if (!f.el.isConnected) return;
+      lista.append(...schede.filter(Boolean)); limite = fine;
+      conta();
+      if (!lista.children.length && limite >= disponibili.length) riepilogo.textContent = 'I passaggi non sono più disponibili. Aggiorna la mappa.';
+    } catch (err) { avviso('Non riesco a caricare questi collegamenti. Riprova.'); }
+    finally { occupato = false; altro.disabled = false; }
+  }
+  altro.addEventListener('click', carica);
+  await carica();
+  return f;
+}
+
 export function creaEchi({ pagina, libro, capitolo, inUso, sospendi, riprendi, cambiato, visibili = () => true }) {
   let revisione = 0, distrutto = false, dati = null;
   let controllo = null;
@@ -111,12 +200,15 @@ export function creaEchi({ pagina, libro, capitolo, inUso, sospendi, riprendi, c
 
   async function righe(i) {
     const out = [];
+    const autori = new Set();
     for (const r of dati?.legami?.[i] || []) {
       if (nascosti.has(r.id)) continue;
       const altro = libri[r.libro];
       if (!altro) continue;
       const destinazione = await datiLibro(r.libro);
-      if (legameValido(r, dati, destinazione, libro, altro, i)) out.push(r);
+      if (legameValido(r, dati, destinazione, libro, altro, i) && !autori.has(chiaveAutore(altro.autore))) {
+        out.push(r); autori.add(chiaveAutore(altro.autore));
+      }
     }
     return out.slice(0, 3);
   }

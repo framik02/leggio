@@ -2,10 +2,12 @@
 // libri ne parlano) e i libri (nodi = libri, archi = quanto dialogano).
 // Per restare leggibile: niente passaggi singoli, solo gli archi portanti,
 // etichette che non si sovrappongono, tocco che mette a fuoco un nodo.
-import { h, icona, bottoneIcona, avviso } from './ui.js';
+import { h, icona, bottoneIcona, avviso, foglio } from './ui.js';
 import { db } from './db.js';
 import { caricaMappa, statoMappa, aggiornaMappa, ricostruisci, seguiMappa, descriviStatoMappa, testoPassaggio } from './mappa.js';
 import { configurato } from './audio.js';
+import { caricaAutori, descriviArco } from './autori.js';
+import { apriConfronti } from './echi.js';
 
 const COLORI = ['#2F5D8A', '#C9952E', '#7A4E7E', '#2A8F9E', '#8A6247', '#5560A8', '#B9A27A', '#56656F'];
 const GRIGIO = '#C9C2B6';
@@ -17,16 +19,18 @@ const s = (tag, attr = {}, ...figli) => {
   return el;
 };
 
-let vista = 'idee';
+let vista = 'autori';
 const mappaDi = tm => tm.mappa || 'idee';
 // Un tema è condiviso se almeno due libri vi contribuiscono davvero, non con un passaggio sparso.
 export const condiviso = tm => Object.values(tm.libri).filter(c => c >= Math.max(2, tm.n * 0.1)).length >= 2;
 
 export async function vistaMappa(radice, schede) {
-  const mappa = await caricaMappa();
+  const originale = await caricaMappa();
+  const mappa = originale || { versione: 0, temi: [], libri: {}, archi: [], archi_libri: [] };
   const st = await statoMappa();
   const libriTutti = await db.tutti('libri');
-  const pronta = mappa && mappa.temi;
+  const pronta = originale && originale.temi;
+  const autori = await caricaAutori(libriTutti);
 
   const stato = h('div', { class: 'mappa-stato' });
   const disegnaStato = st2 => {
@@ -53,13 +57,22 @@ export async function vistaMappa(radice, schede) {
     else disegnaStato(x);
   });
   aggiornaMappa().catch(e => console.warn('mappa', e));
+  const quandoConfronti = () => {
+    if (!stato.isConnected) { document.removeEventListener('leggio-confronti', quandoConfronti); return; }
+    vistaMappa(radice, schede).catch(console.warn);
+  };
+  document.addEventListener('leggio-confronti', quandoConfronti);
+  const controllo = setInterval(() => {
+    if (!stato.isConnected) { clearInterval(controllo); document.removeEventListener('leggio-confronti', quandoConfronti); return; }
+    if (document.visibilityState !== 'hidden') aggiornaMappa().catch(() => {});
+  }, 60000);
 
   const testa = h('header', { class: 'lib-testa' },
     h('div', {}, h('div', { class: 'marchio' }, h('span', { class: 'marchio-segno' }), 'Leggio'), h('h1', {}, 'Mappa')),
     h('a', { class: 'ico', href: '#/chiedi', 'aria-label': 'Chiedi alla libreria', title: 'Chiedi alla libreria' }, icona('cerca')));
 
   let corpo;
-  if (!pronta) {
+  if (!pronta && vista !== 'autori') {
     const collegato = await configurato();
     corpo = h('section', { class: 'benvenuto' },
       h('div', { class: 'benvenuto-segno' }, icona('mappa', 40)),
@@ -85,27 +98,40 @@ export async function vistaMappa(radice, schede) {
   const chips = h('div', { class: 'mappa-libri' });
   const tela = h('div', { class: 'mappa-tela' });
   const scheda = h('div', { class: 'mappa-scheda' });
+  const selettoreAutore = h('select', { class: 'campo', 'aria-label': 'Vai a un autore', onchange: e => {
+    if (e.target.value) grafo?.fuoco(e.target.value); else grafo?.filtra(null);
+  } }, h('option', { value: '' }, 'Vai a un autore'), ...autori.autori.map(a => h('option', { value: a.id }, a.nome)));
+  const controlliAutori = h('div', { class: 'mappa-autori-controlli' },
+    h('div', { class: 'mappa-autori-azioni' }, selettoreAutore,
+      h('button', { class: 'btn', onclick: () => elencoAutori(autori) }, 'Tutti i collegamenti')),
+    h('p', { class: 'nota' }, `${autori.autori.length - autori.senzaAutore} autori${autori.senzaAutore ? ` · ${autori.senzaAutore} libri senza autore` : ''} · ${autori.archi.length} legami · ${autori.totale} coppie di brani`),
+    h('p', { class: 'nota' }, autori.affinita
+      ? 'Linee continue: confronti. Tratteggiate: affinità da verificare.'
+      : autori.verificati ? 'Tocca un autore o una linea per aprire i passaggi.'
+        : 'I collegamenti sono in preparazione. Gli autori della libreria sono già consultabili.'));
 
   const disegnaScelta = () => scelta.replaceChildren(
-    ...[['idee', 'Idee'], ['motivi', 'Motivi'], ['libri', 'Libri']].filter(([k]) => k === 'libri' || mappa.temi.some(tm => mappaDi(tm) === k)).map(([k, t]) => h('button', { class: `pill ${vista === k ? 'attivo' : ''}`, onclick: () => { vista = k; disegnaScelta(); disegna(); } }, t)));
+    ...[['autori', 'Autori'], ['idee', 'Idee'], ['motivi', 'Motivi'], ['libri', 'Libri']].filter(([k]) => k === 'autori' || (pronta && (k === 'libri' || mappa.temi.some(tm => mappaDi(tm) === k)))).map(([k, t]) => h('button', { class: `pill ${vista === k ? 'attivo' : ''}`, onclick: () => { vista = k; disegnaScelta(); disegna(); } }, t)));
   const disegnaChips = () => chips.replaceChildren(...ids.map(id => h('button', {
     class: `mappa-chip ${filtroLibro === id ? 'attivo' : ''} ${filtroLibro && filtroLibro !== id ? 'spento' : ''}`,
     onclick: () => { filtroLibro = filtroLibro === id ? null : id; disegnaChips(); grafo?.filtra(filtroLibro); },
   }, h('span', { class: 'mappa-punto', style: { background: colore[id] } }), titolo(id))));
 
   let grafo = null;
-  const ctx = { mappa, colore, titolo, libri, scheda, apriTema: id => { vista = mappaDi(mappa.temi.find(t => t.id === id) || {}); disegnaScelta(); disegna(id); } };
+  const ctx = { mappa, colore, titolo, libri, scheda, autori, selezionaAutore: id => { selettoreAutore.value = id || ''; }, apriTema: id => { vista = mappaDi(mappa.temi.find(t => t.id === id) || {}); disegnaScelta(); disegna(id); } };
   const disegna = focoIniziale => {
     scheda.classList.remove('aperta');
     grafo?.chiudi();
-    grafo = vista === 'libri' ? grafoLibri(tela, ctx) : grafoTemi(tela, ctx, mappa.temi.filter(tm => mappaDi(tm) === vista));
-    if (filtroLibro) grafo.filtra(filtroLibro);
+    controlliAutori.hidden = vista !== 'autori'; chips.hidden = vista === 'autori';
+    if (vista === 'autori') selettoreAutore.value = '';
+    grafo = vista === 'autori' ? grafoAutori(tela, ctx) : vista === 'libri' ? grafoLibri(tela, ctx) : grafoTemi(tela, ctx, mappa.temi.filter(tm => mappaDi(tm) === vista));
+    if (filtroLibro && vista !== 'autori') grafo.filtra(filtroLibro);
     if (focoIniziale !== undefined) grafo.fuoco(focoIniziale);
   };
 
-  radice.replaceChildren(h('main', { class: 'vista mappa-vista piena' }, testa, stato, h('div', { class: 'mappa-barra' }, scelta), chips, tela, scheda), schede('mappa'));
+  radice.replaceChildren(h('main', { class: 'vista mappa-vista piena' }, testa, stato, h('div', { class: 'mappa-barra' }, scelta), controlliAutori, chips, tela, scheda), schede('mappa'));
   disegnaScelta(); disegnaChips();
-  if (vista !== 'libri' && !mappa.temi.some(tm => mappaDi(tm) === vista)) vista = mappa.temi.length ? mappaDi(mappa.temi[0]) : 'libri';
+  if (!['autori', 'libri'].includes(vista) && !mappa.temi.some(tm => mappaDi(tm) === vista)) vista = 'autori';
   disegnaScelta();
   disegna();
 }
@@ -385,6 +411,148 @@ function passaggioCard(lid, p, ctx) {
       h('span', { class: 'tenue' }, l?.capitoli?.[p.cap]?.titolo ? ' · ' + l.capitoli[p.cap].titolo : '')),
     h('p', {}, testo),
     l ? h('button', { class: 'btn piccolo', onclick: async () => { l.posizione = { cap: p.cap, frase: p.da }; await db.put('libri', l); try { localStorage.setItem(`leggio-pos-${l.id}`, JSON.stringify(l.posizione)); } catch { /* niente */ } location.hash = `#/libro/${l.id}`; } }, 'Leggi qui') : null);
+}
+
+// ---------------------------------------------------------------- vista autori
+function apriArcoAutori(arco, indice) {
+  const nomi = new Map(indice.autori.map(a => [a.id, a.nome]));
+  apriConfronti(arco.confronti, `${nomi.get(arco.a)} · ${nomi.get(arco.b)}`).catch(e => {
+    console.warn('collegamenti', e); avviso('Non riesco ad aprire i collegamenti.');
+  });
+}
+
+function elencoAutori(indice, filtro = null) {
+  const nomi = new Map(indice.autori.map(a => [a.id, a.nome]));
+  const archi = indice.archi.filter(a => !filtro || a.a === filtro || a.b === filtro);
+  const lista = h('div', { class: 'mappa-esempi' });
+  const altri = h('button', { class: 'btn largo' }, 'Mostra altri collegamenti');
+  const riepilogo = h('p', { class: 'nota', role: 'status' });
+  let limite = 0;
+  const aggiungi = () => {
+    const fine = Math.min(limite + 20, archi.length);
+    lista.append(...archi.slice(limite, fine).map(arco => h('button', {
+      class: 'autori-coppia mappa-passaggio', onclick: () => apriArcoAutori(arco, indice),
+    }, h('strong', {}, `${nomi.get(arco.a)} · ${nomi.get(arco.b)}`), h('span', { class: 'tenue' }, descriviArco(arco)))));
+    limite = fine; altri.hidden = limite >= archi.length;
+    riepilogo.textContent = archi.length ? `${limite} di ${archi.length} legami fra autori`
+      : 'Non ci sono ancora collegamenti disponibili per questa selezione.';
+  };
+  altri.addEventListener('click', aggiungi);
+  foglio('Tutti i collegamenti', h('div', { class: 'autori-confronti' }, lista, riepilogo, altri), { alto: true });
+  aggiungi();
+}
+
+function grafoAutori(contenitore, ctx) {
+  const indice = ctx.autori;
+  const autori = indice.autori;
+  if (!autori.length) {
+    contenitore.replaceChildren(h('p', { class: 'vuoto' }, 'Importa i libri: qui compariranno gli autori e i loro collegamenti.'));
+    return { chiudi() {}, filtra() {}, fuoco() {} };
+  }
+  const t = telaSvg(contenitore);
+  t.svg.setAttribute('aria-label', 'Collegamenti fra tutti gli autori. Tocca un autore o una linea; l’elenco completo è disponibile sopra il grafo.');
+  const nodi = autori.map((a, i) => {
+    const angolo = 2 * Math.PI * i / autori.length;
+    const x = Math.cos(angolo) * 230, y = Math.sin(angolo) * 230;
+    return { id: a.id, autore: a, x, y, x0: x, y0: y, r: 14 + Math.min(7, 3 * Math.sqrt(a.libri.length)),
+      peso: a.collegamenti + a.libri.length, fs: 12.5, sempre: autori.length <= 8,
+      etichetta: a.nome.length > 25 ? a.nome.slice(0, 24) + '…' : a.nome };
+  });
+  separa(nodi, 100, 18);
+  const perId = new Map(nodi.map(a => [a.id, a]));
+  const strArchi = s('g'), strNodi = s('g'); t.g.append(strArchi, strNodi);
+  const archiEl = indice.archi.map(arco => {
+    const gruppo = s('g', { class: 'autori-collegamento', 'data-collegamento': arco.id });
+    const percorso = curva(perId.get(arco.a), perId.get(arco.b));
+    const linea = s('path', { d: percorso, class: `m-arco ${arco.verificati ? 'autori-verificato' : 'autori-affinita'}`,
+      'stroke-width': Math.min(2.2, (arco.verificati ? 1.5 : .6) + Math.log1p(arco.confronti.length) * .15).toFixed(2) });
+    const hit = s('path', { d: percorso, class: 'autori-arco-hit', 'vector-effect': 'non-scaling-stroke' });
+    const titolo = s('title'); titolo.textContent = `${perId.get(arco.a).autore.nome} · ${perId.get(arco.b).autore.nome}: ${descriviArco(arco)}`;
+    gruppo.append(titolo, linea, hit);
+    gruppo.addEventListener('click', e => { if (!t.eUnTocco()) return; e.stopPropagation(); apriArcoAutori(arco, indice); });
+    strArchi.append(gruppo);
+    return { gruppo, linea, arco };
+  });
+  for (const n of nodi) {
+    n.testo = s('text', { class: 'm-etichetta', x: 0, y: n.r + 3, 'text-anchor': 'middle', 'dominant-baseline': 'hanging' });
+    n.testo.textContent = n.etichetta;
+    const titolo = s('title'); titolo.textContent = n.autore.nome;
+    const colore = ctx.colore[n.autore.libri[0]] || GRIGIO;
+    const rgb = [1, 3, 5].map(i => parseInt(colore.slice(i, i + 2), 16) / 255)
+      .map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
+    const luce = .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
+    const parole = n.autore.nome.match(/[\p{L}\p{N}]+/gu) || [];
+    n.iniziali = s('text', { class: 'm-autore-iniziali', 'text-anchor': 'middle', 'dominant-baseline': 'central',
+      fill: luce > .2 ? 'var(--inchiostro)' : 'var(--foglio)' });
+    n.iniziali.textContent = n.autore.senzaAutore ? '?' : (parole.length > 1 ? parole[0][0] + parole[parole.length - 1][0] : n.autore.nome.slice(0, 2)).toLocaleUpperCase();
+    n.cerchio = s('circle', { r: n.r, fill: colore, class: 'm-libro' });
+    n.el = s('g', { class: 'm-nodo', transform: `translate(${n.x} ${n.y})`, role: 'button', tabindex: '0',
+      'aria-label': `${n.autore.nome}, ${n.autore.collegamenti} collegamenti`, 'data-autore': n.id }, titolo,
+      n.cerchio, n.iniziali, n.testo);
+    n.el.addEventListener('click', e => { if (!t.eUnTocco()) return; e.stopPropagation(); fuoco(n.id); });
+    n.el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fuoco(n.id); } });
+    strNodi.append(n.el);
+  }
+  const ricalcola = k => {
+    etichetteSenzaSovrapposizioni(nodi, k);
+    for (const n of nodi) {
+      n.cerchio.setAttribute('r', Math.max(n.r, 12 / k));
+      n.iniziali.setAttribute('font-size', 11 / k);
+      n.iniziali.style.display = k < .4 ? 'none' : '';
+      if (n.autore.senzaAutore && !n.fuoco) n.testo.style.display = 'none';
+    }
+  };
+  function sfoca() {
+    ctx.selezionaAutore(null);
+    nodi.forEach(n => { n.fuoco = false; n.el.classList.remove('acceso', 'spento'); });
+    archiEl.forEach(({ gruppo, linea }) => { gruppo.style.opacity = ''; linea.classList.remove('acceso'); });
+    ctx.scheda.classList.remove('aperta'); ricalcola(t.v.k);
+  }
+  function fuoco(id) {
+    const n = perId.get(id); if (!n) return;
+    ctx.selezionaAutore(id);
+    const miei = indice.archi.filter(a => a.a === id || a.b === id);
+    const vicini = new Set([id, ...miei.map(a => a.a === id ? a.b : a.a)]);
+    nodi.forEach(a => { a.fuoco = a.id === id; a.el.classList.toggle('acceso', a.id === id); a.el.classList.toggle('spento', !vicini.has(a.id)); });
+    archiEl.forEach(({ gruppo, linea, arco }) => {
+      const acceso = arco.a === id || arco.b === id;
+      gruppo.style.opacity = acceso ? '1' : '.12'; linea.classList.toggle('acceso', acceso);
+    });
+    ricalcola(t.v.k); t.centra(n.x, n.y);
+    const scheda = ctx.scheda;
+    scheda.replaceChildren(h('div', {},
+      h('div', { class: 'mappa-scheda-testa' }, h('div', {}, h('h3', {}, n.autore.nome),
+        h('p', { class: 'tenue' }, `${n.autore.libri.length} libri · ${n.autore.collegamenti} coppie di brani`)),
+        bottoneIcona('chiudi', 'Chiudi', sfoca, 'piccola')),
+      h('div', { class: 'mappa-vicini' }, ...n.autore.libri.map(lid => h('a', { class: 'mappa-chip', href: `#/libro/${lid}` }, ctx.libri[lid].titolo))),
+      ...(n.autore.senzaAutore ? [h('button', { class: 'btn largo', onclick: () => {
+        const libro = ctx.libri[n.autore.libri[0]];
+        const campo = h('input', { class: 'campo', placeholder: 'Nome e cognome dell’autore', 'aria-label': 'Autore del libro' });
+        const f = foglio('Indica l’autore', h('div', { class: 'modulo' }, h('p', { class: 'nota' }, libro.titolo), campo,
+          h('button', { class: 'btn primario', onclick: async e => {
+            const nome = campo.value.trim(); if (!nome) { campo.focus(); return; }
+            e.target.disabled = true;
+            try {
+              const attuale = await db.get('libri', libro.id);
+              if (!attuale) { avviso('Il libro non è più sul telefono.'); return; }
+              await db.put('libri', { ...attuale, autore: nome }); f.chiudi();
+              document.dispatchEvent(new Event('leggio-confronti'));
+            } catch (err) { avviso('Non riesco a salvare l’autore.'); }
+            finally { e.target.disabled = false; }
+          } }, 'Salva')));
+        campo.focus();
+      } }, 'Indica l’autore')] : []),
+      ...(miei.length ? miei.map(arco => h('button', { class: 'autori-coppia mappa-dialogo', onclick: () => apriArcoAutori(arco, indice) },
+        h('strong', {}, perId.get(arco.a === id ? arco.b : arco.a).autore.nome), h('span', { class: 'tenue' }, descriviArco(arco))))
+        : [h('p', { class: 'nota' }, 'Per questo autore non ci sono ancora collegamenti disponibili.')])));
+    scheda.classList.add('aperta'); scheda.scrollTop = 0;
+  }
+  t.quandoZoom(ricalcola);
+  t.svg.addEventListener('click', () => { if (t.eUnTocco()) sfoca(); });
+  t.adatta(Math.min(...nodi.map(n => n.x - n.r - 60)), Math.min(...nodi.map(n => n.y - n.r)),
+    Math.max(...nodi.map(n => n.x + n.r + 60)), Math.max(...nodi.map(n => n.y + n.r + 30)));
+  ricalcola(t.v.k);
+  return { chiudi() {}, filtra: () => sfoca(), fuoco };
 }
 
 // ---------------------------------------------------------------- vista libri

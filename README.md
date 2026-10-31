@@ -52,7 +52,29 @@ si apre http://127.0.0.1:8765. Il service worker si attiva solo in https.
 - Le voci del telefono si fermano a schermo spento. L'audio generato su Kaggle,
   toglie questo limite e porta la voce clonata.
 
-## Collegamenti fra autori, versione 0.13
+## Grafo degli autori, versione 0.14
+
+Mappa si apre sulla vista Autori. Le opere dello stesso autore formano un solo
+nodo; tutte le coppie disponibili sono raccolte nelle linee fra i nodi. Il
+tocco su un autore elenca i suoi legami, il tocco su una linea apre i brani di
+entrambi gli autori. Il selettore «Vai a un autore» e «Tutti i collegamenti»
+danno accesso anche alle etichette nascoste dallo zoom.
+
+Sono consultabili subito anche le affinità della mappa precedente, marcate
+«Affinità da verificare» e con linee tratteggiate. I confronti interpretati
+usano le linee continue. Una coppia reciproca si conta una volta sola; il
+confronto interpretato sostituisce la corrispondente affinità. Coppie respinte,
+nascoste o con versioni discordanti vengono escluse quando i dati lo indicano.
+
+Le schede mostrano entrambi gli estratti originali e consentono contesto,
+apertura nel lettore e salvataggio. Gli elenchi caricano venti elementi alla
+volta e permettono di raggiungerli tutti. Il lettore mantiene al massimo tre
+autori per richiamo; il grafo non applica quel limite. Tutto ciò che è già
+scaricato si consulta offline.
+
+Prova completa del grafo: `python tests/test_autori_browser.py`.
+
+## Archivio dei confronti
 
 `js/echi.js` consulta soltanto i confronti con prove prodotti dalla pipeline
 su Kaggle. Gli echi precedenti basati sulla sola somiglianza non diventano
