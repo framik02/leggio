@@ -1,4 +1,4 @@
-// Audio generato: lavori su GitHub e Kaggle, scaricamento dei capitoli,
+// Audio generato: lavori su GitHub, con Kaggle per le voci che vogliono la GPU, scaricamento dei capitoli,
 // riproduzione con un vero file audio, che continua a schermo spento.
 import { db, impostazioni, salvaImpostazioni, dizionario } from './db.js';
 import { frasiDalCapitolo, applicaDizionario, perVoce } from './voce.js';
@@ -115,6 +115,7 @@ export function nomeVoce(id, voci = []) {
     const v = id.slice(7);
     return v.slice(3, 4).toUpperCase() + v.slice(4);
   }
+  if (id.startsWith('supertonic:')) return `Supertonic ${id.slice(11)}`;
   return id.split(':')[1] || id;
 }
 export function descriviVoce(v) {
@@ -122,17 +123,27 @@ export function descriviVoce(v) {
     const sigla = v.nome.slice(0, 2);
     return `${sigla[1] === 'f' ? 'Femminile' : 'Maschile'}, accento ${ACCENTO[sigla[0]] || ''} · veloce da creare`;
   }
+  if (v.motore === 'supertonic') return `${v.genere === 'm' ? (v.grave ? 'Maschile, grave' : 'Maschile') : 'Femminile'} · italiano e inglese, senza Kaggle`;
   return `${v.genere === 'm' ? (v.grave ? 'Maschile, grave' : 'Maschile') : 'Femminile'} · espressiva, più lenta da creare`;
 }
 
 // ---------------------------------------------------------------- lavori
 
+// Motore dalla voce scelta. Supertonic gira su GitHub, gli altri su Kaggle.
+export function motoreDi(voceId) {
+  for (const m of ['kokoro', 'xtts', 'rvc', 'supertonic']) if (voceId.startsWith(m + ':')) return m;
+  return 'clonata';
+}
+export const suKaggle = motore => motore !== 'supertonic';
+
 // Stima in minuti del tempo di creazione, dalla lunghezza dell'audio.
 export function stima(parole, motore) {
   const audio = parole / 150;
-  const calcolo = motore === 'kokoro' ? audio / 40 : audio * 0.5;
-  return { audio, attesa: calcolo + 7 };
+  const calcolo = motore === 'kokoro' ? audio / 40 : motore === 'supertonic' ? audio / RITMO_SUPERTONIC : audio * 0.5;
+  return { audio, attesa: calcolo + (motore === 'supertonic' ? 2 : 7) };
 }
+// Minuti di audio per minuto di calcolo su una macchina di GitHub Actions (misura del 31/10/2026).
+const RITMO_SUPERTONIC = 2;
 
 // Prepara il testo come lo leggerebbe il telefono: stesse frasi, stesse pause.
 async function preparaCapitolo(libroId, n, imp, regole, lingua) {
@@ -156,7 +167,7 @@ async function preparaCapitolo(libroId, n, imp, regole, lingua) {
 export async function creaLavoro(libro, voceId, capitoli, avanzamento) {
   const imp = await impostazioni();
   const regole = await dizionario();
-  let motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : voceId.startsWith('rvc:') ? 'rvc' : 'clonata';
+  let motore = motoreDi(voceId);
   const voceClonata = motore === 'clonata' ? await db.get('voci', voceId.slice(8)) : null;
   if (voceClonata?.allenata?.kernel) motore = 'allenata';
   const caps = [];
@@ -244,7 +255,7 @@ export async function aggiornaLavoro(rec) {
     rec.chiuso = Date.now();
     await gh(`/git/refs/heads/${rec.ramo}`, { method: 'DELETE', consenti404: true }).catch(() => {});
   }
-  // Nessuna notizia da tempo: si chiede a Kaggle che fine ha fatto il notebook.
+  // Nessuna notizia da tempo: si chiede a Kaggle (o a GitHub) che fine ha fatto il lavoro.
   const fermo = Date.now() - (rec.stato?.aggiornato ? rec.stato.aggiornato * 1000 : rec.creato);
   if (!rec.chiuso && fase !== 'errore' && fermo > 25 * 60000 && Date.now() - (rec.controllato || 0) > 20 * 60000) {
     rec.controllato = Date.now();
@@ -262,19 +273,20 @@ export function descriviStato(rec) {
   const quando = st.aggiornato ? Math.round((Date.now() - st.aggiornato * 1000) / 60000) : null;
   const ultimo = quando === null ? '' : quando < 1 ? 'Ultimo segnale adesso.' : `Ultimo segnale ${quando} min fa.`;
   const gpu = /batch GPU session count/i.test(st.errore || '');
+  const dove = suKaggle(rec.motore) ? 'Kaggle' : 'GitHub';
   switch (st.fase) {
     case 'errore': return { errore: true, testo: gpu ? 'Kaggle accetta al massimo due lavori con GPU insieme.' : 'Il lavoro si è fermato.', dettaglio: gpu ? "Aspetta che finisca l'altro, poi premi Riprendi." : (st.errore || '') };
-    case 'da riprendere': return { testo: 'Kaggle si è fermato prima della fine.', dettaglio: `${pronti} di ${tot} capitoli pronti. Premi Riprendi per continuare da lì.` };
+    case 'da riprendere': return { testo: `${dove} si è fermato prima della fine.`, dettaglio: `${pronti} di ${tot} capitoli pronti. Premi Riprendi per continuare da lì.` };
     case 'finito': return rec.motore === 'allena'
       ? { testo: 'Voce allenata.', dettaglio: `${st.frasi || ''} frasi, ${st.minuti || ''} minuti di voce. Da ora l’audio con questa voce usa il modello allenato.` }
-      : { testo: pronti >= tot ? 'Audio pronto.' : 'Finito su Kaggle, sto scaricando.', dettaglio: `${pronti} di ${tot} capitoli sul telefono.` };
+      : { testo: pronti >= tot ? 'Audio pronto.' : `Finito su ${dove}, sto scaricando.`, dettaglio: `${pronti} di ${tot} capitoli sul telefono.` };
     case 'in corso': return rec.motore === 'allena'
       ? { testo: 'Allenamento in corso.', dettaglio: `${st.dettaglio ? st.dettaglio[0].toUpperCase() + st.dettaglio.slice(1) + '. ' : ''}Di solito 20-60 minuti. Continua anche se chiudi l'app. ${ultimo}` }
       : { testo: `Lettura in corso: ${pronti} di ${tot} capitoli pronti.`, dettaglio: `${st.dettaglio ? st.dettaglio[0].toUpperCase() + st.dettaglio.slice(1) + '. ' : ''}Continua anche se chiudi l'app. ${ultimo}` };
-    case 'preparo la voce': return { testo: 'Kaggle è partito e sta preparando la voce.', dettaglio: `Di solito 5-10 minuti, poi arriva il primo capitolo. ${ultimo}` };
+    case 'preparo la voce': return { testo: `${dove} è partito e sta preparando la voce.`, dettaglio: `${suKaggle(rec.motore) ? 'Di solito 5-10 minuti' : 'Un paio di minuti'}, poi arriva il primo capitolo. ${ultimo}` };
     case 'in coda su Kaggle': return { testo: 'In coda su Kaggle, aspetta una macchina libera.', dettaglio: `Può volerci qualche minuto, a volte di più per la GPU. Continua anche se chiudi l'app. ${ultimo}` };
     case 'carico su Kaggle': return { testo: 'Sto preparando il lavoro su Kaggle.', dettaglio: ultimo };
-    default: return { testo: 'Inviato. Kaggle lo prende in carico fra un minuto.', dettaglio: "Puoi chiudere l'app: il lavoro continua." };
+    default: return { testo: `Inviato. ${dove} lo prende in carico fra un minuto.`, dettaglio: "Puoi chiudere l'app: il lavoro continua." };
   }
 }
 

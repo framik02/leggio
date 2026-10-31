@@ -2,7 +2,7 @@
 import { db, impostazioni, salvaImpostazioni, nuovoId } from './db.js';
 import { h, icona, bottoneIcona, foglio, avviso, conferma, minuti } from './ui.js';
 import { voci as vociTelefono, prova, etichettaQualita } from './voce.js';
-import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla, descriviStato, recuperaLavori, allenaVoce, allenamentoDi, vociKaggle, preferenzeRvc, salvaPreferenzeRvc } from './audio.js';
+import { catalogo, descriviVoce, nomeVoce, creaLavoro, stima, configurato, lavoriAttivi, aggiornaLavoro, riprendi, annulla, descriviStato, recuperaLavori, allenaVoce, allenamentoDi, vociKaggle, preferenzeRvc, salvaPreferenzeRvc, motoreDi, suKaggle } from './audio.js';
 
 let _anteprima = null;
 function ascolta(url) {
@@ -64,13 +64,14 @@ export async function apriPannelloVoci(opz) {
     const tutte = (await catalogo()).filter(v => v.lingue.includes(libro.lingua));
     if (!tutte.length) return [h('p', { class: 'nota' }, 'Il catalogo delle voci naturali non è ancora disponibile.')];
     const gruppi = [
+      ['Supertonic', 'Voci nitide, le stesse in italiano e in inglese. Si creano su GitHub senza passare da Kaggle.', v => v.motore === 'supertonic'],
       ['Veloci', 'Pronte in pochi minuti anche per un libro intero.', v => v.motore === 'kokoro'],
       ['Narratori gravi', 'Voci maschili profonde, adatte a saggi e documentari. Espressive, per un libro lungo servono alcune ore.', v => v.motore === 'xtts' && v.grave],
       ['Maschili', 'Voci da studio espressive.', v => v.motore === 'xtts' && v.genere === 'm' && !v.grave],
       ['Femminili', 'Voci da studio espressive.', v => v.motore === 'xtts' && v.genere !== 'm'],
     ];
     return [
-      h('p', { class: 'nota' }, 'Audio vero, creato gratis su Kaggle. Si ascolta anche a schermo spento, coi controlli nella schermata di blocco.'),
+      h('p', { class: 'nota' }, 'Audio vero, creato gratis su GitHub o su Kaggle. Si ascolta anche a schermo spento, coi controlli nella schermata di blocco.'),
       ...gruppi.map(([titolo, nota, filtro]) => {
         const voci = tutte.filter(filtro);
         if (!voci.length) return null;
@@ -188,7 +189,7 @@ async function creaAudio(libro, capAtt, voceId, dopo) {
   if (!(await configurato())) { configuraGithub(); return; }
   const altri = (await lavoriAttivi()).filter(l => l.libro !== libro.id);
   if (altri.length) { avviso('C\'è già un audio in preparazione per un altro libro: aspetta che finisca.'); return; }
-  const motore = voceId.startsWith('kokoro:') ? 'kokoro' : voceId.startsWith('xtts:') ? 'xtts' : 'clonata';
+  const motore = motoreDi(voceId);
   const giaPronti = new Set((await db.audioLibro(libro.id)).filter(a => a.voce === voceId).map(a => a.n));
   // Capitoli di servizio che nessuno vuole ascoltare: note, bibliografia, indici.
   const servizio = /^(note|notes|endnotes|bibliografia|bibliography|riferimenti bibliografici|indice( analitico| dei nomi)?|index|colophon|copyright|crediti|credits|frontespizio)$/i;
@@ -206,7 +207,7 @@ async function creaAudio(libro, capAtt, voceId, dopo) {
     const parole = caps.reduce((s, i) => s + libro.capitoli[i].parole, 0);
     const { audio, attesa } = stima(parole, motore);
     info.textContent = caps.length
-      ? `${caps.length} capitoli, circa ${minuti(audio * 60)} di audio${esclusi && scelta !== 'questo' ? ` (saltati ${esclusi} capitoli di note, bibliografia o indice)` : ''}. Primo capitolo pronto in 10 o 15 minuti, tutto in circa ${minuti(attesa * 60)}.${motore !== 'kokoro' ? ' Usa la GPU gratuita di Kaggle: 30 ore a settimana.' : ''}`
+      ? `${caps.length} capitoli, circa ${minuti(audio * 60)} di audio${esclusi && scelta !== 'questo' ? ` (saltati ${esclusi} capitoli di note, bibliografia o indice)` : ''}. Primo capitolo pronto in ${suKaggle(motore) ? '10 o 15' : '3 o 5'} minuti, tutto in circa ${minuti(attesa * 60)}.${suKaggle(motore) ? (motore !== 'kokoro' ? ' Usa la GPU gratuita di Kaggle: 30 ore a settimana.' : '') : ' Usa i minuti gratuiti di GitHub: 2.000 al mese.'}`
       : 'Questi capitoli hanno già l\'audio con questa voce.';
   };
   const seg = h('div', { class: 'segmenti' });
@@ -223,7 +224,7 @@ async function creaAudio(libro, capAtt, voceId, dopo) {
     try {
       await creaLavoro(libro, voceId, caps, p => { bottone.textContent = `Preparo… ${Math.round(p * 100)}%`; });
       f.chiudi();
-      avviso('Audio in preparazione. Il primo capitolo arriva fra 10 o 15 minuti.');
+      avviso(`Audio in preparazione. Il primo capitolo arriva fra ${suKaggle(motore) ? '10 o 15' : '3 o 5'} minuti.`);
       dopo && dopo();
     } catch (e) {
       bottone.disabled = false; bottone.textContent = 'Crea audio';

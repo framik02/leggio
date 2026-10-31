@@ -1082,5 +1082,165 @@
   "f0": 216,
   "genere": "f",
   "grave": false
+ },
+ {
+  "id": "supertonic:F1",
+  "motore": "supertonic",
+  "nome": "F1",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_F1_it.mp3",
+   "en": "supertonic_F1_en.mp3"
+  },
+  "f0": 181,
+  "genere": "f",
+  "grave": false
+ },
+ {
+  "id": "supertonic:F2",
+  "motore": "supertonic",
+  "nome": "F2",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_F2_it.mp3",
+   "en": "supertonic_F2_en.mp3"
+  },
+  "f0": 200,
+  "genere": "f",
+  "grave": false
+ },
+ {
+  "id": "supertonic:F3",
+  "motore": "supertonic",
+  "nome": "F3",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_F3_it.mp3",
+   "en": "supertonic_F3_en.mp3"
+  },
+  "f0": 172,
+  "genere": "f",
+  "grave": false
+ },
+ {
+  "id": "supertonic:F4",
+  "motore": "supertonic",
+  "nome": "F4",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_F4_it.mp3",
+   "en": "supertonic_F4_en.mp3"
+  },
+  "f0": 190,
+  "genere": "f",
+  "grave": false
+ },
+ {
+  "id": "supertonic:F5",
+  "motore": "supertonic",
+  "nome": "F5",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_F5_it.mp3",
+   "en": "supertonic_F5_en.mp3"
+  },
+  "f0": 156,
+  "genere": "f",
+  "grave": false
+ },
+ {
+  "id": "supertonic:M1",
+  "motore": "supertonic",
+  "nome": "M1",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_M1_it.mp3",
+   "en": "supertonic_M1_en.mp3"
+  },
+  "f0": 152,
+  "genere": "m",
+  "grave": false
+ },
+ {
+  "id": "supertonic:M2",
+  "motore": "supertonic",
+  "nome": "M2",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_M2_it.mp3",
+   "en": "supertonic_M2_en.mp3"
+  },
+  "f0": 91,
+  "genere": "m",
+  "grave": true
+ },
+ {
+  "id": "supertonic:M3",
+  "motore": "supertonic",
+  "nome": "M3",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_M3_it.mp3",
+   "en": "supertonic_M3_en.mp3"
+  },
+  "f0": 105,
+  "genere": "m",
+  "grave": false
+ },
+ {
+  "id": "supertonic:M4",
+  "motore": "supertonic",
+  "nome": "M4",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_M4_it.mp3",
+   "en": "supertonic_M4_en.mp3"
+  },
+  "f0": 122,
+  "genere": "m",
+  "grave": false
+ },
+ {
+  "id": "supertonic:M5",
+  "motore": "supertonic",
+  "nome": "M5",
+  "lingue": [
+   "it",
+   "en"
+  ],
+  "file": {
+   "it": "supertonic_M5_it.mp3",
+   "en": "supertonic_M5_en.mp3"
+  },
+  "f0": 90,
+  "genere": "m",
+  "grave": true
  }
 ]

@@ -269,7 +269,7 @@ async function sezioneAudio() {
   const mb = audio.reduce((s, a) => s + (a.blob?.size || 0), 0) / 1048576;
   const { configuraGithub } = await import('./vocipanel.js');
   return h('section', { class: 'imp-sez' }, h('h2', {}, 'Audio generato'),
-    h('p', { class: 'nota' }, 'Voci naturali e voce clonata, create gratis su Kaggle e scaricate sul telefono. Si ascoltano anche a schermo spento.'),
+    h('p', { class: 'nota' }, 'Voci naturali e voce clonata, create gratis su GitHub o su Kaggle e scaricate sul telefono. Si ascoltano anche a schermo spento.'),
     h('p', { class: 'nota' }, collegato ? `Collegato a ${imp.githubRepo || 'framik02/leggio-audio'}.` : 'Non ancora collegato.',
       ` ${audio.length} capitoli scaricati, ${mb.toFixed(0)} MB.`, lavori.length ? ` ${lavori.length} lavori in corso.` : ''),
     h('button', { class: `btn largo ${collegato ? '' : 'primario'}`, onclick: () => configuraGithub(() => vistaImpostazioni()) }, collegato ? 'Cambia codice di accesso' : 'Collega GitHub'));
