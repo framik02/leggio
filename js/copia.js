@@ -3,7 +3,7 @@
 // file veri dentro lo zip, senza ricompressione.
 import { db, salvaImpostazioni, impostazioni } from './db.js';
 
-const ARCHIVI = ['libri', 'capitoli', 'risorse', 'originali', 'evidenziati', 'impostazioni', 'diario', 'voci', 'audio'];
+const ARCHIVI = ['libri', 'capitoli', 'risorse', 'originali', 'evidenziati', 'impostazioni', 'diario', 'voci', 'audio', 'confronti'];
 const SENZA_CHIAVE = new Set(['impostazioni', 'diario']);
 
 export async function dimensioni() {

@@ -1,7 +1,7 @@
 // Archivio locale su IndexedDB. Tutto resta sul dispositivo.
 
 const NOME = 'leggio';
-const VERSIONE = 3;
+const VERSIONE = 4;
 let _db = null;
 
 function apri() {
@@ -29,6 +29,10 @@ function apri() {
       if (e.oldVersion < 3) {
         // Mappa della conoscenza scaricata da Kaggle: si può sempre ricalcolare, non va nella copia.
         db.createObjectStore('mappa');
+      }
+      if (e.oldVersion < 4) {
+        // Scelte personali: restano anche quando la mappa viene ricalcolata.
+        db.createObjectStore('confronti', { keyPath: 'id' });
       }
     };
     req.onsuccess = () => { _db = req.result; _db.onversionchange = () => { _db.close(); _db = null; }; ok(_db); };
@@ -194,6 +198,7 @@ const PREDEFINITE = {
   interlinea: 1.6,
   margini: 22,
   giustifica: true,
+  echi: true,
   velocita: 1,
   voce_it: '',
   voce_en: '',

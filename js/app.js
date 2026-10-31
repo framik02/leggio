@@ -251,6 +251,7 @@ async function vistaEvidenziati() {
   radice.replaceChildren(h('main', { class: 'vista' },
     h('header', { class: 'lib-testa' }, h('div', {}, h('div', { class: 'marchio' }, h('span', { class: 'marchio-segno' }), 'Leggio'), h('h1', {}, 'Evidenziati')),
       tutti.length ? h('button', { class: 'btn', onclick: esporta }, icona('condividi', 18), 'Esporta') : null),
+    h('button', { class: 'btn largo echi-salvati-ingresso', onclick: async () => (await import('./echi.js')).mostraSalvati() }, icona('mappa', 18), 'Confronti salvati'),
     blocchi.length ? blocchi.map(([id, ev]) => h('section', { class: 'ev-libro' },
       h('h2', {}, libri[id].titolo, h('small', {}, ` ${ev.length}`)),
       ev.sort((a, b) => a.cap - b.cap || a.frase - b.frase).map(e => h('a', { class: `ev-voce c-${e.colore}`, href: `#/libro/${id}`, onclick: async () => { const l = libri[id]; l.posizione = { cap: e.cap, frase: e.frase }; await db.put('libri', l); } },
@@ -302,7 +303,7 @@ async function sezioneCopia() {
     } catch (err) { av.remove(); avviso(err.message || 'Copia non riuscita', { durata: 6000 }); }
   } }, icona('condividi', 18), 'Salva una copia completa');
   return h('div', { class: 'copia' },
-    h('p', { class: 'nota' }, `Un file solo con libri, evidenziati, note, segnalibri, pronunce, voci registrate e impostazioni (${mb(d.libri + d.voci)}). Salvalo con Condividi › Salva su File, meglio su iCloud Drive: così sopravvive anche se cancelli l'app. ${quando}`),
+    h('p', { class: 'nota' }, `Un file solo con libri, evidenziati, note, segnalibri, confronti salvati, pronunce, voci registrate e impostazioni (${mb(d.libri + d.voci)}). Salvalo con Condividi › Salva su File, meglio su iCloud Drive: così sopravvive anche se cancelli l'app. ${quando}`),
     d.audio ? h('label', { class: 'interruttore' }, h('span', {}, `Includi l'audio creato (${mb(d.audio)})`),
       h('input', { type: 'checkbox', onchange: e => { conAudio = e.target.checked; } })) : null,
     salva,
@@ -367,10 +368,10 @@ async function vistaImpostazioni() {
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Obiettivo'),
       numero('obiettivo', 'Minuti al giorno', 5, 120, 5, 'min')),
     h('section', { class: 'imp-sez' }, h('h2', {}, 'Dati'),
-      h('p', { class: 'nota' }, `Tutto resta su questo telefono. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
+      h('p', { class: 'nota' }, `L’archivio di lettura resta su questo telefono. Per preparare audio, mappa e collegamenti, i testi vengono inviati al tuo repository privato GitHub e a Kaggle. ${spazio}. ${persistente ? 'Archivio protetto dalla pulizia automatica.' : 'Archivio non ancora protetto dalla pulizia automatica.'}`),
       h('p', { class: 'nota' }, `Libri nell'archivio: ${Object.keys(libri).length}. ${installata() ? 'Stai usando l\'app installata.' : 'Stai usando Leggio dentro il browser: i libri importati qui non compaiono nell\'icona sulla schermata Home, che ha un archivio separato.'}`),
       await sezioneCopia()),
-    h('p', { class: 'firma' }, 'Leggio · versione 0.9')),
+    h('p', { class: 'firma' }, 'Leggio · versione 0.13')),
   schede('impostazioni'));
 }
 

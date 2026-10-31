@@ -7,6 +7,7 @@ import { frasiDalCapitolo } from './voce.js';
 import { gh, lancia, configurato } from './audio.js';
 
 const RAMO = 'mappa';
+const ECHI_VERSIONE = 1;
 const ATTESA_IMPORT = 2 * 60000;   // dopo un'importazione si aspetta: più libri, un giro solo
 const CHIUSE = ['finito', 'errore', 'da riprendere'];
 
@@ -25,7 +26,7 @@ function ultimoImport() {
 }
 
 // Impronta del contenuto: il testo di un libro importato non cambia.
-const firma = l => `${l.frasiTotali}-${l.paroleTotali}`;
+const firma = l => JSON.stringify([l.frasiTotali, l.paroleTotali, l.titolo, l.autore, ECHI_VERSIONE]);
 
 // ---------------------------------------------------------------- testi
 export async function testoLibro(l) {
@@ -75,7 +76,7 @@ async function invia(st, libri, nuovi, avanzamento) {
     file.push({ percorso: `mappa/testi/${l.id}.json`, dati: JSON.stringify(await testoLibro(l)) });
     avanzamento && avanzamento((i + 1) / nuovi.length);
   }
-  file.push({ percorso: 'lavoro/job.json', dati: JSON.stringify({ id: 'mappa', motore: 'mappa', gpu: true, libri: libri.map(l => l.id) }) });
+  file.push({ percorso: 'lavoro/job.json', dati: JSON.stringify({ id: 'mappa', motore: 'mappa', gpu: true, echi: { versione: ECHI_VERSIONE }, libri: libri.map(l => l.id) }) });
   const partenza = { fase: 'in partenza', aggiornato: Math.floor(Date.now() / 1000) };
   file.push({ percorso: 'stato.json', dati: JSON.stringify(partenza) });
   await scriviRamo(file);
@@ -103,6 +104,8 @@ async function scarica(st, versione) {
     if (!indice.libri[lid]) { await db.del('mappa', `libro:${lid}`); delete st.scaricati[lid]; }
   }
   await db.put('mappa', temi, 'temi');
+  st.echi = indice.echi || null;
+  st.echiVersione = indice.echi?.versione || 0;
   st.versione = versione;
   st.aggiornata = Date.now();
   await salvaLocale(st);
@@ -143,13 +146,15 @@ async function giro({ forza = false, avanzamento } = {}) {
   if (!attivo) {
     const libri = await db.tutti('libri');
     const nuovi = libri.filter(l => st.inviati[l.id] !== firma(l));
+    const mancaEchi = st.echiVersione !== ECHI_VERSIONE;
+    const continuaEchi = st.echi?.completo === false && Date.now() - (st.aggiornata || 0) > 20 * 60000;
     const tolti = (st.libriInviati || []).some(id => !libri.find(l => l.id === id));
     // Dopo un errore si riprova da soli solo a distanza di tempo; GPU occupate da un audio: mezz'ora.
     const fallito = r.fase === 'errore' || r.fase === 'da riprendere';
     const breve = r.fase === 'da riprendere' || /GPU session count/i.test(r.errore || '');
     const pausaErrore = fallito && !forza && Date.now() - (st.lanciato || 0) < (breve ? 30 : 360) * 60000;
     const daPoco = !forza && Date.now() - ultimoImport() < ATTESA_IMPORT;
-    if ((nuovi.length || tolti || forza || fallito) && libri.length && !pausaErrore && !daPoco) {
+    if ((nuovi.length || tolti || forza || fallito || mancaEchi || continuaEchi) && libri.length && !pausaErrore && !daPoco) {
       await invia(st, libri, nuovi, avanzamento);
     }
   }
@@ -205,6 +210,10 @@ export function descriviStatoMappa(st) {
     case 'errore': return /GPU session count/i.test(r.errore || '')
       ? 'Kaggle ha già due lavori sulla GPU. Riprovo da solo fra mezz’ora.'
       : `La mappa non si è aggiornata: ${r.errore || 'errore su Kaggle'}`;
+    case 'finito': {
+      const echi = st.echi || r.echi;
+      return echi?.completo === false ? `Collegamenti in preparazione: ${echi.esaminate} confronti esaminati. I risultati pronti sono già disponibili.` : '';
+    }
     case 'da riprendere': return 'Il notebook si è fermato prima di finire.';
     default: return '';
   }

@@ -598,3 +598,24 @@ button.anello { border: 0; cursor: pointer; font: inherit; color: inherit; }
 .chiedi-testo:not(.aperto) .fuori { display: none; }
 .chiedi-testo.aperto .puntini { display: none; }
 .chiedi-cap { margin: -2px 0 6px 16px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/* ------------------------------------------------------------ echi nel lettore */
+.eco-richiamo { display: inline-flex; align-items: center; gap: 3px; min-width: 27px; min-height: 26px; padding: 3px 5px; margin: 0 2px 0 5px; border-radius: 8px; font-family: var(--sans); font-size: 11px; font-weight: 600; line-height: 1; color: var(--accento); background: var(--accento-velo); vertical-align: super; text-indent: 0; user-select: none; }
+.eco-richiamo:active { background: var(--ev-giallo); }
+.echi-elenco { display: grid; gap: 14px; }
+.echi-scheda, .echi-salvato { display: grid; gap: 12px; }
+.echi-meta { font-family: var(--sans); font-size: 13px; font-weight: 600; color: var(--secondario); margin-bottom: 7px; overflow-wrap: anywhere; }
+.echi-cap { font-size: 12px; color: var(--secondario); margin-top: 7px; }
+.echi-scheda .echi-idea { font-family: var(--serif); font-size: 18px; margin: 0; }
+.echi-scheda .mf-citazione, .echi-salvato .mf-citazione { font-size: 16px; margin: 0; max-height: none; overflow: visible; }
+.echi-scheda .echi-spiegazione, .echi-salvato .echi-spiegazione { font-family: var(--sans); font-size: 14px; color: var(--secondario); margin: 0; }
+.echi-azioni { flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+.echi-azioni .btn { max-width: 100%; }
+.echi-nascondi { justify-self: start; color: var(--secondario); font-size: 13px; min-height: 40px; text-decoration: underline; text-underline-offset: 3px; }
+.echi-contesto { font-family: var(--serif); font-size: 18px; line-height: 1.65; }
+.echi-contesto h3 { font-size: 21px; margin: 12px 0 18px; }
+.echi-contesto p { margin: 0 0 14px; }
+.echi-contesto .btn { font-family: var(--sans); margin-top: 12px; }
+.echi-salvati-ingresso { margin-bottom: 20px; }
+@media (pointer: coarse) { .eco-richiamo { position: relative; } .eco-richiamo::before { content: ''; position: absolute; inset: -9px -7px; } }

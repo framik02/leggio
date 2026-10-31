@@ -3,6 +3,7 @@ import { db, impostazioni, salvaImpostazioni, dizionario, salvaDizionario, aggiu
 import { h, icona, bottoneIcona, foglio, avviso, minuti, pressioneLunga } from './ui.js';
 import { LettoreAudio, nomeVoce, lavoriAttivi } from './audio.js';
 import { creaSelezione } from './selezione.js';
+import { creaEchi } from './echi.js';
 import { inCorsoPer, prendi, restituisci } from './ascolto.js';
 import { Lettore, frasiDalCapitolo, voci, trovaVoce, prova, etichettaQualita, applicaDizionario, disponibile } from './voce.js';
 
@@ -150,6 +151,21 @@ export async function apriLettore(radice, id, esci) {
   applicaAspetto();
   chipVel.textContent = `${lettore.velocita.toFixed(2).replace(/0$/, '').replace('.', ',')}×`;
 
+  // Gli echi usano lo stesso foglio delle altre funzioni e non cambiano libro o progresso.
+  const echi = creaEchi({ pagina, libro, capitolo: () => cap, inUso: () => attivo, visibili: () => imp.echi !== false,
+    sospendi: () => {
+      const prima = { suonava: lettore.attivo, indice: lettore.indice, cap };
+      if (prima.suonava) { salvaPosizione(); lettore.pausa(); }
+      return prima;
+    },
+    riprendi: prima => {
+      if (prima?.suonava && prima.cap === cap && !lettore.attivo) {
+        const p = lettore.play(prima.indice); if (p?.catch) p.catch(() => {});
+      }
+    },
+    cambiato: () => selezione?.ridisegna(),
+  });
+
   // ------------------------------------------------------------ capitoli
   async function caricaCapitolo(n, frase = 0, verso = 'inizio') {
     const c = await db.get('capitoli', [id, n]);
@@ -186,6 +202,7 @@ export async function apriLettore(radice, id, esci) {
       setTimeout(() => { ripristino = false; salvaPosizione(); }, 120);
     });
     aggiornaSegno();
+    if (imp.echi !== false) echi.aggiorna().catch(e => console.warn('echi', e));
   }
 
   // Audio creato per questo capitolo? Allora si ascolta quello.
@@ -502,6 +519,10 @@ export async function apriLettore(radice, id, esci) {
           try { await navigator.clipboard.writeText(`«${t}» ${libro.titolo}${libro.autore ? ', ' + libro.autore : ''}`); avviso('Copiato'); } catch { avviso('Copia non riuscita'); }
           selezione.pulisci();
         }),
+        az('mappa', 'Altri autori', async () => {
+          const da = sel.da.s, a = sel.a.s; selezione.pulisci();
+          try { await echi.cerca(da, a); } catch (e) { console.warn(e); avviso('Non riesco ad aprire i collegamenti.'); }
+        }),
         az('segno', 'Segna', async () => { await segnaFrase(sel.da.s, selezione.testo()); selezione.pulisci(); }),
         selezione.testo().split(/\s+/).length <= 3 ? az('cerca', 'Significato', async () => { const t = selezione.testo(); selezione.pulisci(); (await import('./extra.js')).apriSignificato(t, libro.lingua); }) : null,
         az('voce', 'Pronuncia', () => correggiPronuncia(selezione.testo()))));
@@ -664,6 +685,11 @@ export async function apriLettore(radice, id, esci) {
         h('button', { class: `asp-tema ${imp.tema === k ? 'attivo' : ''}`, style: { background: t.fondo, color: t.testo }, onclick: () => cambia({ tema: k }) }, h('span', {}, 'Aa'), h('small', {}, t.nome)))),
       h('div', { class: 'asp-caratteri' }, Object.entries(CARATTERI).map(([k, c]) =>
         h('button', { class: imp.carattere === k ? 'attivo' : '', style: { fontFamily: c.css }, onclick: () => cambia({ carattere: k }) }, c.nome))),
+      h('label', { class: 'interruttore' }, h('span', {}, 'Collegamenti ad altri autori'),
+        h('input', { type: 'checkbox', checked: imp.echi !== false, onchange: async e => {
+          await salvaImpostazioni({ echi: e.target.checked });
+          if (imp.echi) await echi.aggiorna(); else pagina.querySelectorAll('.eco-richiamo').forEach(b => b.remove());
+        } })),
       cursore('Interlinea', 1.3, 2.1, 0.05, imp.interlinea, v => cambia({ interlinea: v })),
       cursore('Margini', 10, 48, 2, imp.margini, v => cambia({ margini: v })),
       h('label', { class: 'interruttore' }, h('span', {}, 'Testo giustificato'),
@@ -680,6 +706,7 @@ export async function apriLettore(radice, id, esci) {
   function chiudi(torna = true) {
     if (!attivo) return;
     attivo = false;
+    echi.chiudi();
     document.removeEventListener('leggio-lavoro', quandoLavoro);
     if (lettore.attivo) {
       salvaPosizione();
@@ -704,6 +731,7 @@ export async function apriLettore(radice, id, esci) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') salvaSubito(); });
 
   await caricaCapitolo(cap, libro.posizione?.frase || 0);
+  echi.avvia();
   if (ripreso && lettore.attivo) {
     sintesi.onStato(true);
     segui(true);
