@@ -96,7 +96,9 @@ with sync_playwright() as pw:
     assert page.evaluate("async()=>{const{db}=await import('/js/db.js');return (await db.get('confronti','coppia-ab')).destinazione.testo.startsWith('«La memoria')}")
     (ROOT/'.prova/echi').mkdir(parents=True, exist_ok=True)
     page.wait_for_timeout(3300)
-    page.screenshot(path=str(ROOT/'.prova/echi/lettore-echi-mobile.png'),full_page=True)
+    box = sheet.bounding_box()
+    assert box and box['height'] > 100 and box['y'] >= 0 and box['y'] + box['height'] <= 845, box
+    page.screenshot(path=str(ROOT/'.prova/echi/lettore-echi-mobile.png'))
     sheet.get_by_role('button',name='Chiudi',exact=True).click()
     sheet.wait_for(state='detached')
     assert page.evaluate("({root:scrollY,lettore:document.querySelector('.l-scorri').scrollTop})") == vista
